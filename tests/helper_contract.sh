@@ -23,9 +23,23 @@ ln -sf "$repo_root/.bash_profile" "$HOME/.bash_profile"
 # shellcheck source=/dev/null
 source "$HOME/.bash_profile"
 
-helpers=(sysinfo netinfo extract flushdns jd jdir)
+helpers=(sysinfo netinfo extract flushdns jd jdir pathinfo)
 for helper in "${helpers[@]}"; do
   "$helper" --help >/dev/null
+done
+
+# Unknown flags: exit 2 and stderr starts with "<helper>: unknown option".
+for helper in "${helpers[@]}"; do
+  rc=0
+  err="$("$helper" --definitely-not-a-flag 2>&1 >/dev/null)" || rc=$?
+  if [[ "$rc" -ne 2 ]]; then
+    printf 'helper_contract: %s with an unknown flag exited %s, expected 2\n' "$helper" "$rc" >&2
+    exit 1
+  fi
+  if [[ "$err" != "$helper: unknown option"* ]]; then
+    printf 'helper_contract: %s unknown-flag message must start with "%s: unknown option", got: %s\n' "$helper" "$helper" "${err%%$'\n'*}" >&2
+    exit 1
+  fi
 done
 
 expected_netinfo=(local_hostname default_interface gateway local_ip vpn_interfaces external_ip external_hostname city)

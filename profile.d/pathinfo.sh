@@ -4,9 +4,8 @@
 
 # shellcheck shell=bash
 
-pathinfo() {
-    pathinfo_usage() {
-        cat <<'USAGE'
+_pathinfo_usage() {
+    cat <<'USAGE'
 Usage: pathinfo [--help] [--duplicates] [--missing]
 
 Print PATH entries one per line and flag duplicates and missing directories.
@@ -21,14 +20,15 @@ Exit codes:
   1 runtime error
   2 usage/unknown option
 USAGE
-    }
+}
 
+pathinfo() {
     local only_dups=0 only_missing=0
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -h|--help)
-                pathinfo_usage
+                _pathinfo_usage
                 return 0
                 ;;
             --duplicates)
@@ -43,7 +43,7 @@ USAGE
                 ;;
             *)
                 echo "pathinfo: unknown option: $1" >&2
-                pathinfo_usage >&2
+                _pathinfo_usage >&2
                 return 2
                 ;;
         esac
@@ -55,14 +55,21 @@ USAGE
     local parts=()
     # Bash 3.2 compatible.
     read -r -a parts <<< "${PATH:-}"
+    # `read` drops a trailing empty field, but a trailing ':' means "current
+    # directory" -- exactly the kind of entry pathinfo should surface.
+    [[ "${PATH:-}" == *: ]] && parts+=("")
 
     local seen=":"
     local i=0
-    local p status dup suffix
+    local p label status dup suffix
 
     for p in "${parts[@]}"; do
         i=$((i + 1))
-        [[ -n "$p" ]] || p="."
+        label="$p"
+        if [[ -z "$p" ]]; then
+            p="."
+            label=". (empty entry = current dir)"
+        fi
 
         status="ok"
         [[ -d "$p" ]] || status="missing"
@@ -84,6 +91,6 @@ USAGE
         if [[ "$dup" -eq 1 ]]; then
             suffix=",dup"
         fi
-        printf '%3d  %s  [%s%s]\n' "$i" "$p" "$status" "$suffix"
+        printf '%3d  %s  [%s%s]\n' "$i" "$label" "$status" "$suffix"
     done
 }

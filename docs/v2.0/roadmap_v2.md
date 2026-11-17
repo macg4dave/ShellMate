@@ -104,7 +104,7 @@ The existing scope (`docs/v2.0/scope_v2.md`) and compatibility contract (`docs/v
 
 - Compatibility contract: ✅ defined in `docs/v2.0/compatibility_contract.md`, including supported shells, tools, and safe-to-source guarantees.
 - Scope, supported guardrails, and absolute-outs are spelled out in `docs/v2.0/scope_v2.md`, giving us the “won’t do” list and upgrade context.
-- Deprecation + breaking-change policy: ✅ captured in `docs/v2.0/deprecation_policy.md` and `docs/v2.0/compatibility_contract.md`.
+- Breaking-change policy: ✅ captured in `docs/v2.0/compatibility_contract.md` (the separate deprecation policy was later dropped).
 - Upgrade/migration notes: ✅ `docs/v2.0/migration_from_v1.md`.
 - Release checklist: ✅ `docs/v2.0/release_process.md`.
 - Config + precedence: ✅ `docs/v2.0/config_and_modules.md`.

@@ -25,6 +25,27 @@ _netinfo_local_hostname() {
     echo "$hn"
 }
 
+# True if $1 looks like an IPv4 or IPv6 address. Guards against captive
+# portals / proxies that answer the IP endpoint with an HTML page.
+_netinfo_is_ip() {
+    local ip="$1"
+    [[ "$ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] && return 0
+    [[ "$ip" == *:* && "$ip" =~ ^[0-9A-Fa-f:.]+$ && ${#ip} -le 45 ]]
+}
+
+# Strip control characters (incl. ESC) from network-provided text before it
+# reaches the terminal, and cap its length.
+_netinfo_sanitize() {
+    printf '%s' "$1" | tr -d '\000-\037\177' | cut -c1-200
+}
+
+# Usage: _netinfo_cache_fresh <ts> <now> <ttl>
+# Validates numbers first: cache contents end up in arithmetic.
+_netinfo_cache_fresh() {
+    [[ "$1" =~ ^[0-9]+$ && "$2" =~ ^[0-9]+$ && "$3" =~ ^[0-9]+$ ]] || return 1
+    [[ "$1" -gt 0 && "$2" -gt 0 && $(( $2 - $1 )) -lt "$3" ]]
+}
+
 _netinfo_external_ip() {
     if [[ "${NETINFO_EXTERNAL_IP:-1}" == "0" ]]; then
         echo "N/A"
@@ -39,7 +60,8 @@ _netinfo_external_ip() {
     if [[ -r "$cache_file" ]]; then
         ts="$(awk 'NR==1 {print $1; exit}' "$cache_file" 2>/dev/null || echo 0)"
         ip="$(awk 'NR==1 {print $2; exit}' "$cache_file" 2>/dev/null || echo '')"
-        if [[ -n "$ip" && "$now" -gt 0 && "$ts" -gt 0 && $((now - ts)) -lt "$ttl" ]]; then
+        # A cached "N/A" (failed lookup) is honoured too, so offline runs stay fast.
+        if _netinfo_cache_fresh "$ts" "$now" "$ttl" && { [[ "$ip" == "N/A" ]] || _netinfo_is_ip "$ip"; }; then
             echo "$ip"
             return 0
         fi
@@ -54,7 +76,7 @@ _netinfo_external_ip() {
         return 0
     fi
 
-    [[ -n "$ip" ]] || ip="N/A"
+    _netinfo_is_ip "$ip" || ip="N/A"
     if mkdir -p "$cache_dir" 2>/dev/null; then
         # Silence any redirection errors (e.g., unwritable cache dir).
         (printf "%s %s\n" "${now:-0}" "$ip" > "$cache_file") 2>/dev/null || true
@@ -77,7 +99,7 @@ _netinfo_ipinfo_json() {
     if [[ -r "$cache_file" ]]; then
         ts="$(awk 'NR==1 {print $1; exit}' "$cache_file" 2>/dev/null || echo 0)"
         json="$(awk 'NR==2 {print; exit}' "$cache_file" 2>/dev/null || echo '')"
-        if [[ -n "$json" && "$now" -gt 0 && "$ts" -gt 0 && $((now - ts)) -lt "$ttl" ]]; then
+        if [[ -n "$json" ]] && _netinfo_cache_fresh "$ts" "$now" "$ttl"; then
             echo "$json"
             return 0
         fi
@@ -100,10 +122,17 @@ _netinfo_ipinfo_json() {
 }
 
 _netinfo_ipinfo_field() {
+    # Usage: _netinfo_ipinfo_field <field> [json]
+    # Pass json when you already have it: a failed fetch isn't cached, so
+    # re-fetching per field can cost one network timeout each.
     local field="$1"
-    local json value parser python_code
+    local json value="" parser python_code
 
-    json="$(_netinfo_ipinfo_json)"
+    if [[ $# -ge 2 ]]; then
+        json="$2"
+    else
+        json="$(_netinfo_ipinfo_json)"
+    fi
     [[ -n "$json" ]] || { echo "N/A"; return 0; }
 
     python_code=$'import json\nimport sys\n\nfield = sys.argv[1]\ntry:\n    data = json.load(sys.stdin)\nexcept Exception:\n    print("N/A")\n    sys.exit(0)\nvalue = data.get(field)\nif value is None:\n    print("N/A")\nelse:\n    print(value)\n'
@@ -115,7 +144,11 @@ _netinfo_ipinfo_field() {
         fi
     done
 
+    value="$(_netinfo_sanitize "$value")"
     [[ -n "$value" ]] || value="N/A"
+    if [[ "$field" == "ip" ]] && ! _netinfo_is_ip "$value"; then
+        value="N/A"
+    fi
     echo "$value"
 }
 
@@ -153,20 +186,20 @@ _netinfo_reverse_dns() {
         host="$(_netinfo_reverse_dns_python "$ip")"
     fi
 
-    host="${host%.}"
+    host="$(_netinfo_sanitize "${host%.}")"
     [[ -n "$host" ]] || host="N/A"
     echo "$host"
 }
 
 _netinfo_default_iface_linux() {
     if has_cmd ip; then
-        ip route 2>/dev/null | awk '/^default/ {print $5; exit}' 2>/dev/null || true
+        ip route 2>/dev/null | awk '/^default/ {for (i = 1; i < NF; i++) if ($i == "dev") {print $(i + 1); exit}}' 2>/dev/null || true
     fi
 }
 
 _netinfo_default_gw_linux() {
     if has_cmd ip; then
-        ip route 2>/dev/null | awk '/^default/ {print $3; exit}' 2>/dev/null || true
+        ip route 2>/dev/null | awk '/^default/ {for (i = 1; i < NF; i++) if ($i == "via") {print $(i + 1); exit}}' 2>/dev/null || true
     fi
 }
 
@@ -183,9 +216,18 @@ _netinfo_default_gw_macos() {
 }
 
 _netinfo_local_ip_linux() {
-    if has_cmd ip; then
-        ip -o -4 addr show scope global 2>/dev/null | awk '{print $4}' 2>/dev/null | head -n 1 || true
+    # Usage: _netinfo_local_ip_linux [iface]
+    # Prefer the default interface's address; print it without the /prefix
+    # so the value has the same shape as on macOS.
+    has_cmd ip || return 0
+    local iface="${1:-}" addr=""
+    if [[ -n "$iface" && "$iface" != "N/A" ]]; then
+        addr="$(ip -o -4 addr show dev "$iface" scope global 2>/dev/null | awk '{print $4; exit}')"
     fi
+    if [[ -z "$addr" ]]; then
+        addr="$(ip -o -4 addr show scope global 2>/dev/null | awk '{print $4; exit}')"
+    fi
+    printf '%s\n' "${addr%%/*}"
 }
 
 _netinfo_local_ip_macos() {
@@ -204,8 +246,17 @@ _netinfo_vpn_ifaces_linux() {
 
 _netinfo_vpn_ifaces_macos() {
     if has_cmd ifconfig; then
-        ifconfig 2>/dev/null | awk -F: '/^[a-z0-9]+:/{print $1}' | grep -E '^utun[0-9]+$' || true
+        ifconfig 2>/dev/null | _netinfo_parse_utun_ifconfig
     fi
+}
+
+# Parse `ifconfig` (stdin): print utun interfaces that have an IPv4 address.
+# macOS creates several utunN itself (iCloud Private Relay, etc.) with only
+# IPv6 link-local addresses; VPN clients (WireGuard, Tailscale, ...) add inet.
+_netinfo_parse_utun_ifconfig() {
+    awk '
+      /^[a-z0-9]+:/ { split($0, a, ":"); cur = a[1]; next }
+      cur ~ /^utun[0-9]+$/ && $1 == "inet" && !(cur in seen) { seen[cur] = 1; print cur }'
 }
 
 _netinfo_join_lines() {
@@ -583,7 +634,7 @@ USAGE
     if [[ "$platform" == "Linux" ]]; then
         iface="$(_netinfo_default_iface_linux)"
         gw="$(_netinfo_default_gw_linux)"
-        lip="$(_netinfo_local_ip_linux)"
+        lip="$(_netinfo_local_ip_linux "$iface")"
         vpn="$(_netinfo_vpn_ifaces_linux | _netinfo_join_lines 2>/dev/null)"
     elif [[ "$platform" == "Darwin" ]]; then
         iface="$(_netinfo_default_iface_macos)"
@@ -598,12 +649,14 @@ USAGE
     vpn="${vpn:-none}"
     lhost="$(_netinfo_local_hostname)"
     ext="$(_netinfo_external_ip)"
+    local ipinfo_json
+    ipinfo_json="$(_netinfo_ipinfo_json)"
     # If the /ip endpoint fails but /json works, use that IP (same cache/TTL).
     if [[ "$ext" == "N/A" ]]; then
-        ext="$(_netinfo_ipinfo_field ip)"
+        ext="$(_netinfo_ipinfo_field ip "$ipinfo_json")"
     fi
-    ehost="$(_netinfo_ipinfo_field hostname)"
-    city="$(_netinfo_ipinfo_field city)"
+    ehost="$(_netinfo_ipinfo_field hostname "$ipinfo_json")"
+    city="$(_netinfo_ipinfo_field city "$ipinfo_json")"
 
     if [[ "$ehost" == "N/A" && "$ext" != "N/A" ]]; then
         ehost="$(_netinfo_reverse_dns "$ext")"

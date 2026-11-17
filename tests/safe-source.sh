@@ -53,6 +53,7 @@ allowed_pattern='^(\.bash_profile$|\.cache/|\.config/|\.local/state/|\.safe-sour
 grep -Ev "$allowed_pattern" "$before_list" | sort > "$before_filtered"
 
 # Source with blocked commands at the front of PATH.
+# shellcheck source=/dev/null
 source "$HOME/.bash_profile"
 
 # Verify no forbidden commands ran (a stub exiting would have failed earlier).
@@ -65,9 +66,14 @@ fi
 find "$tmp_home" -mindepth 1 -print | sed "s#^$tmp_home/##" | sort > "$after_list"
 grep -Ev "$allowed_pattern" "$after_list" | sort > "$after_filtered"
 
-if ! diff -u "$before_filtered" "$after_filtered" >/dev/null 2>&1; then
+# Compare in bash: slim images (e.g. fedora) may not ship diffutils.
+if [[ "$(cat "$before_filtered")" != "$(cat "$after_filtered")" ]]; then
   echo "safe-source guard: unexpected files created outside allowed directories" >&2
-  diff -u "$before_filtered" "$after_filtered" >&2
+  if command -v diff >/dev/null 2>&1; then
+    diff -u "$before_filtered" "$after_filtered" >&2 || true
+  else
+    cat "$after_filtered" >&2
+  fi
   exit 1
 fi
 

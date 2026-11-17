@@ -77,7 +77,6 @@ This is the preferred v2 method for per-machine tweaks.
 v2’s default intent is “no surprises”. If something is ever changed in a way that can break scripts or muscle memory, it must be treated as a breaking change and documented per:
 
 - `docs/v2.0/compatibility_contract.md`
-- `docs/v2.0/deprecation_policy.md`
 
 ## Migration table (P0.4)
 

@@ -8,4 +8,4 @@ repo root — follow them. Key points, in case that file isn't loaded:
 - Guard non-portable commands with `command -v` and/or `uname -s` checks; fail soft.
 - Helpers follow `docs/v2.0/helper_contract.md` (`--help` → 0, unknown flag → 2, missing tool → `N/A`, stable `--kv` key order).
 - Keep `shellcheck --shell=bash` clean; run `make lint` and `make test`.
-- No secrets, no heavy new dependencies, no breaking changes without a deprecation path.
+- No secrets, no heavy new dependencies, no breaking changes without asking first and a CHANGELOG note.

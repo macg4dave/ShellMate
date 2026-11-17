@@ -278,7 +278,10 @@ Both support `--dry-run`.
 ```bash
 make lint
 make test
+make hooks   # once per clone: run lint + tests automatically before each commit
 ```
+
+Tests also run automatically in GitHub Actions on every push and pull request, and weekly.
 
 ### Testing in Docker
 

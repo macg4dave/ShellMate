@@ -3,6 +3,11 @@ name: CI
 on:
   push:
   pull_request:
+  # Weekly run catches breakage from new runner images / distro packages
+  # even when nobody pushes.
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
 
 jobs:
   lint-and-test:
@@ -17,17 +22,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install ShellCheck (Ubuntu)
-        if: runner.os == 'Linux'
+      # Pinned: different ShellCheck versions report different codes for the
+      # same code (e.g. SC2317 vs SC2329), which has broken lint before.
+      - name: Install ShellCheck (pinned)
+        shell: bash
+        env:
+          SHELLCHECK_VERSION: v0.10.0
         run: |
-          sudo apt-get update
-          sudo apt-get install -y shellcheck
-
-      - name: Install ShellCheck (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew update
-          brew install shellcheck
+          case "$(uname -s)-$(uname -m)" in
+            Linux-x86_64)  asset=linux.x86_64 ;;
+            Linux-aarch64) asset=linux.aarch64 ;;
+            Darwin-arm64)  asset=darwin.aarch64 ;;
+            Darwin-x86_64) asset=darwin.x86_64 ;;
+            *) echo "No ShellCheck build for $(uname -s)-$(uname -m)" >&2; exit 1 ;;
+          esac
+          url="https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.${asset}.tar.xz"
+          curl -fsSL "$url" | tar -xJ -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/shellcheck-${SHELLCHECK_VERSION}" >> "$GITHUB_PATH"
 
       - name: Lint
         run: make lint

@@ -70,4 +70,4 @@ Because install is a symlink or a copied install dir, rollback is straightforwar
 ## Versioning policy
 
 - Tags use `vMAJOR.MINOR.PATCH`.
-- v2 aims to keep **backward compatibility** by default; breaking changes require explicit migration notes and a deprecation window when feasible.
+- v2 aims to keep **backward compatibility** by default; breaking changes require explicit migration notes.

@@ -11,376 +11,365 @@ _sysinfo_has_cmd() {
     command -v "$1" >/dev/null 2>&1
 }
 
-# User and system information variables
-which_os="1"  # 1 for macOS, 2 for Linux
-os_name=""
-os_ver=""
-net_int_mac="en0"  # Default network interface for macOS
-net_int_linux="eth0"  # Default network interface for Linux
+# Measurements. Everything here is prefixed _sysinfo_ because this file is
+# sourced into the user's interactive shell; _sysinfo_reset runs before each
+# collection so no stale values leak between runs.
+_sysinfo_reset() {
+    _sysinfo_which_os=""   # 1 = macOS, 2 = Linux
+    _sysinfo_os_name="N/A"
+    _sysinfo_os_ver="N/A"
+    _sysinfo_net_iface=""
+    _sysinfo_startup_name="N/A"
+    _sysinfo_startup_size="N/A"
+    _sysinfo_startup_used="N/A"
+    _sysinfo_startup_free="N/A"
+    _sysinfo_uptime_time="N/A"
+    _sysinfo_uptime_load="N/A"
+    _sysinfo_cpu_used_user="N/A"
+    _sysinfo_cpu_used_sys="N/A"
+    _sysinfo_cpu_used_idle="N/A"
+    _sysinfo_network_down="N/A"
+    _sysinfo_network_up="N/A"
+    _sysinfo_ram_total="N/A"
+    _sysinfo_ram_used="N/A"
+    _sysinfo_ram_free="N/A"
+}
 
-startup_name="N/A"
-startup_size="N/A"
-startup_used="N/A"
-startup_free="N/A"
-
-uptime_time="N/A"
-uptime_load="N/A"
-
-cpu_used_user="N/A"
-cpu_used_sys="N/A"
-cpu_used_idle="N/A"
-
-network_down="N/A"
-network_up="N/A"
-
-ram_total="N/A"
-ram_used="N/A"
-ram_free="N/A"
-
-# Function to detect the operating system (macOS or Linux)
-find_os() {
-    os_name="$(uname 2>/dev/null || echo 'Unknown')"
-    case "$os_name" in
+_sysinfo_find_os() {
+    _sysinfo_os_name="$(uname 2>/dev/null || echo 'Unknown')"
+    case "$_sysinfo_os_name" in
         Darwin)
-            which_os="1"
+            _sysinfo_which_os="1"
             if _sysinfo_has_cmd sw_vers; then
-                os_ver="$(sw_vers -productVersion 2>/dev/null || echo 'N/A')"  # Get macOS version
-            else
-                os_ver="N/A"
+                _sysinfo_os_ver="$(sw_vers -productVersion 2>/dev/null || echo 'N/A')"
             fi
             ;;
         Linux)
-            which_os="2"
-            os_ver="$(uname -r 2>/dev/null || echo 'N/A')"  # Get Linux kernel version
+            _sysinfo_which_os="2"
+            _sysinfo_os_ver="$(uname -r 2>/dev/null || echo 'N/A')"  # kernel version
             ;;
         *)
-            echo "Unsupported OS" >&2
+            echo "sysinfo: unsupported OS: $_sysinfo_os_name" >&2
             return 1
             ;;
     esac
 }
 
-# Convert bytes to a human-readable string when possible.
-human_bytes() {
+# Bytes -> IEC string with 2 decimals (e.g. 16.00GB). Uses numfmt (GNU
+# coreutils) when present; macOS lacks it by default, so the awk fallback
+# mimics numfmt's output, including its round-up behaviour.
+_sysinfo_human_bytes() {
     local bytes="$1"
     if [[ -z "$bytes" || "$bytes" == "0" ]]; then
         echo "0B"
         return 0
     fi
-    if command -v numfmt >/dev/null 2>&1; then
-        numfmt --to=iec --suffix=B --format="%.2f" "$bytes"
-    else
-        echo "${bytes}B"
-    fi
-}
-
-# Function to convert bytes to MB/s using numfmt for a human-readable format
-convert_to_mbps() {
-    local v="$1"
-    if [[ -z "$v" || "$v" == "0" ]]; then
+    if [[ ! "$bytes" =~ ^[0-9]+$ ]]; then
         echo "N/A"
+        return 0
+    fi
+    if _sysinfo_has_cmd numfmt && numfmt --to=iec --suffix=B --format="%.2f" "$bytes" 2>/dev/null; then
+        return 0
+    fi
+    awk -v b="$bytes" 'BEGIN {
+        split("B KB MB GB TB PB EB", unit, " ")
+        v = b + 0; i = 1
+        if (v < 1024) { printf "%.2fB\n", v; exit }
+        while (v >= 1024 && i < 7) { v /= 1024; i++ }
+        c = v * 100; r = int(c); if (r < c) r++
+        v = r / 100
+        if (v >= 1024 && i < 7) { v /= 1024; i++ }
+        printf "%.2f%s\n", v, unit[i]
+    }'
+}
+
+# Interface byte counter -> human string (N/A when unknown).
+_sysinfo_net_bytes() {
+    local v="$1"
+    if [[ "$v" =~ ^[0-9]+$ ]]; then
+        _sysinfo_human_bytes "$v"
     else
-        if command -v numfmt >/dev/null 2>&1; then
-            numfmt --to=iec --suffix=B --format="%.2f" "$v"
-        else
-            # macOS may not have `numfmt` unless coreutils is installed.
-            echo "${v}B"
-        fi
+        echo "N/A"
     fi
 }
 
-# macOS-specific function to get RAM information
-mac_get_ram() {
-    local total_bytes page_size
-    if ! _sysinfo_has_cmd sysctl || ! _sysinfo_has_cmd vm_stat; then
-        ram_total="N/A"
-        ram_used="N/A"
-        ram_free="N/A"
-        return 0
-    fi
+# Seconds -> "up 3 days, 4 hours, 5 minutes" (same shape as `uptime -p`).
+_sysinfo_fmt_duration() {
+    local secs="$1"
+    [[ "$secs" =~ ^[0-9]+$ ]] || { echo "N/A"; return 0; }
+    awk -v s="$secs" 'BEGIN {
+        d = int(s / 86400); h = int((s % 86400) / 3600); m = int((s % 3600) / 60)
+        out = ""
+        if (d > 0) out = out d (d == 1 ? " day" : " days")
+        if (h > 0) out = out (out == "" ? "" : ", ") h (h == 1 ? " hour" : " hours")
+        if (m > 0 || out == "") out = out (out == "" ? "" : ", ") m (m == 1 ? " minute" : " minutes")
+        print "up " out
+    }'
+}
 
-    total_bytes="$(sysctl -n hw.memsize 2>/dev/null || echo '')"
-    page_size="$(vm_stat 2>/dev/null | awk '/page size of/ {gsub("[^0-9]","",$0); print $0; exit}')"
+# "1.0 2.0 3.0", "{ 1.0 2.0 3.0 }" or "1.0, 2.0, 3.0" (stdin) -> "1.0, 2.0, 3.0".
+_sysinfo_norm_load() {
+    awk '{
+        gsub(/[{},]/, " ")
+        n = 0; out = ""
+        for (i = 1; i <= NF && n < 3; i++) {
+            if ($i ~ /^[0-9]+([.,][0-9]+)?$/) { out = out (n ? ", " : "") $i; n++ }
+        }
+        if (n == 3) print out
+        exit
+    }'
+}
 
-    if [[ -z "$total_bytes" || -z "$page_size" ]]; then
-        ram_total="N/A"
-        ram_used="N/A"
-        ram_free="N/A"
-        return 0
-    fi
+# --- macOS ---------------------------------------------------------------------
+
+_sysinfo_mac_ram() {
+    _sysinfo_has_cmd sysctl && _sysinfo_has_cmd vm_stat || return 0
+
+    local total_bytes vm page_size
+    total_bytes="$(sysctl -n hw.memsize 2>/dev/null || true)"
+    vm="$(vm_stat 2>/dev/null || true)"
+    page_size="$(printf '%s\n' "$vm" | awk '/page size of/ {gsub("[^0-9]","",$0); print $0; exit}')"
+    [[ "$total_bytes" =~ ^[0-9]+$ && "$page_size" =~ ^[0-9]+$ ]] || return 0
 
     # vm_stat reports page counts with trailing periods.
-    local free speculative active inactive wired compressed
-    free="$(vm_stat 2>/dev/null | awk '/Pages free/ {gsub("\\.","",$3); print $3; exit}')"
-    speculative="$(vm_stat 2>/dev/null | awk '/Pages speculative/ {gsub("\\.","",$3); print $3; exit}')"
-    active="$(vm_stat 2>/dev/null | awk '/Pages active/ {gsub("\\.","",$3); print $3; exit}')"
-    inactive="$(vm_stat 2>/dev/null | awk '/Pages inactive/ {gsub("\\.","",$3); print $3; exit}')"
-    wired="$(vm_stat 2>/dev/null | awk '/Pages wired down/ {gsub("\\.","",$4); print $4; exit}')"
-    compressed="$(vm_stat 2>/dev/null | awk '/Pages occupied by compressor/ {gsub("\\.","",$5); print $5; exit}')"
+    local counts free speculative active inactive wired compressed
+    counts="$(printf '%s\n' "$vm" | awk '
+        function n(s) { gsub(/[^0-9]/, "", s); return s + 0 }
+        /^Pages free:/                   { f = n($NF) }
+        /^Pages speculative:/            { sp = n($NF) }
+        /^Pages active:/                 { a = n($NF) }
+        /^Pages inactive:/               { ia = n($NF) }
+        /^Pages wired down:/             { w = n($NF) }
+        /^Pages occupied by compressor:/ { c = n($NF) }
+        END { print f + 0, sp + 0, a + 0, ia + 0, w + 0, c + 0 }')"
+    read -r free speculative active inactive wired compressed <<< "$counts"
 
-    free="${free:-0}"
-    speculative="${speculative:-0}"
-    active="${active:-0}"
-    inactive="${inactive:-0}"
-    wired="${wired:-0}"
-    compressed="${compressed:-0}"
-
-    local free_pages used_pages free_bytes used_bytes
-    free_pages=$((free + speculative))
-    used_pages=$((active + inactive + wired + compressed))
-    free_bytes=$((free_pages * page_size))
-    used_bytes=$((used_pages * page_size))
-
-    ram_total="$(human_bytes "$total_bytes")"
-    ram_used="$(human_bytes "$used_bytes")"
-    ram_free="$(human_bytes "$free_bytes")"
+    _sysinfo_ram_total="$(_sysinfo_human_bytes "$total_bytes")"
+    _sysinfo_ram_used="$(_sysinfo_human_bytes $(( (active + inactive + wired + compressed) * page_size )))"
+    _sysinfo_ram_free="$(_sysinfo_human_bytes $(( (free + speculative) * page_size )))"
 }
 
-# Linux-specific function to get RAM information
-linux_get_ram() {
-    local total_kb avail_kb
+# Parse `diskutil info /` (stdin) -> "name<TAB>size<TAB>used<TAB>free".
+# Size/free are shown as diskutil prints them (decimal units, e.g. "494.4 GB");
+# used is computed from the exact byte counts and printed the same way.
+_sysinfo_parse_diskutil() {
+    awk '
+      function val(s)   { sub(/^[^:]*:[[:space:]]*/, "", s); return s }
+      function shown(s) { s = val(s); sub(/[[:space:]]*\(.*/, "", s); return s }
+      function bytes(s) { if (match(s, /\([0-9]+ Bytes\)/)) return substr(s, RSTART + 1, RLENGTH - 8); return "" }
+      function dec(b,   u, i) {
+          split("B KB MB GB TB PB", u, " "); i = 1
+          while (b >= 1000 && i < 6) { b /= 1000; i++ }
+          return sprintf("%.1f %s", b, u[i])
+      }
+      /^[[:space:]]*Volume Name:/            { name = val($0) }
+      /^[[:space:]]*Container Total Space:/  { cts = shown($0); ctb = bytes($0) }
+      /^[[:space:]]*Container Free Space:/   { cfs = shown($0); cfb = bytes($0) }
+      /^[[:space:]]*(Volume Total Space|Total Size):/ { if (vts == "") { vts = shown($0); vtb = bytes($0) } }
+      /^[[:space:]]*(Volume Free Space|Volume Available Space):/ { if (vfs == "") { vfs = shown($0); vfb = bytes($0) } }
+      END {
+          # APFS: the container is what fills up; older HFS+ only has volume fields.
+          if (cts != "") { ts = cts; tb = ctb } else { ts = vts; tb = vtb }
+          if (cfs != "") { fs = cfs; fb = cfb } else { fs = vfs; fb = vfb }
+          used = (tb != "" && fb != "") ? dec(tb - fb) : ""
+          printf "%s\t%s\t%s\t%s\n", (name == "" ? "N/A" : name), (ts == "" ? "N/A" : ts), (used == "" ? "N/A" : used), (fs == "" ? "N/A" : fs)
+      }'
+}
+
+_sysinfo_mac_disk() {
+    _sysinfo_has_cmd diskutil || return 0
+    local name size used free
+    IFS=$'\t' read -r name size used free < <(diskutil info / 2>/dev/null | _sysinfo_parse_diskutil)
+    _sysinfo_startup_name="${name:-N/A}"
+    _sysinfo_startup_size="${size:-N/A}"
+    _sysinfo_startup_used="${used:-N/A}"
+    _sysinfo_startup_free="${free:-N/A}"
+}
+
+# Parse `netstat -ib` (stdin) -> "<rx_bytes> <tx_bytes>" for the interface's
+# <Link#N> row. Columns are found from the header and counted from the END of
+# the row, because the Address column is blank for some interfaces.
+_sysinfo_parse_netstat_ib() {
+    awk -v iface="$1" '
+      NR == 1 {
+          for (i = 1; i <= NF; i++) {
+              if ($i == "Ibytes") { ib = NF - i; have_ib = 1 }
+              if ($i == "Obytes") { ob = NF - i; have_ob = 1 }
+          }
+          next
+      }
+      have_ib && have_ob && $1 == iface && $3 ~ /^<Link/ { print $(NF - ib), $(NF - ob); exit }'
+}
+
+_sysinfo_mac_net() {
+    _sysinfo_has_cmd netstat || return 0
+    local iface=""
+    if _sysinfo_has_cmd route; then
+        iface="$(route -n get default 2>/dev/null | awk '/interface:/ {print $2; exit}')"
+    fi
+    _sysinfo_net_iface="${iface:-en0}"
+
+    local rx tx
+    read -r rx tx < <(netstat -ib 2>/dev/null | _sysinfo_parse_netstat_ib "$_sysinfo_net_iface")
+    _sysinfo_network_down="$(_sysinfo_net_bytes "${rx:-}")"
+    _sysinfo_network_up="$(_sysinfo_net_bytes "${tx:-}")"
+}
+
+# Parse a top "CPU usage: 5.1% user, 10.2% sys, 84.6% idle" line (stdin) -> "u s i".
+_sysinfo_parse_top_cpu() {
+    awk '/CPU usage/ {
+        for (i = 1; i < NF; i++) {
+            v = $i; sub(/%$/, "", v)
+            if ($(i + 1) ~ /^user/) u = v
+            if ($(i + 1) ~ /^sys/)  s = v
+            if ($(i + 1) ~ /^idle/) d = v
+        }
+        line = u " " s " " d
+    }
+    END { if (u != "" && s != "" && d != "") print line }'
+}
+
+_sysinfo_mac_cpu() {
+    _sysinfo_has_cmd top || return 0
+    # top's first sample covers an undefined interval; take the second, 1s later.
+    local u s i
+    read -r u s i < <(top -l 2 -n 0 -s 1 2>/dev/null | _sysinfo_parse_top_cpu)
+    [[ -n "${i:-}" ]] || return 0
+    _sysinfo_cpu_used_user="$u"
+    _sysinfo_cpu_used_sys="$s"
+    _sysinfo_cpu_used_idle="$i"
+}
+
+_sysinfo_mac_uptime() {
+    local boot now load
+    if _sysinfo_has_cmd sysctl; then
+        # "{ sec = 1700000000, usec = 0 } Mon Nov 13 ..."
+        boot="$(sysctl -n kern.boottime 2>/dev/null | awk -F'[ ,]+' '{for (i = 1; i < NF; i++) if ($i == "sec") {print $(i + 2); exit}}')"
+        now="$(date +%s 2>/dev/null || true)"
+        if [[ "$boot" =~ ^[0-9]+$ && "$now" =~ ^[0-9]+$ && "$now" -ge "$boot" ]]; then
+            _sysinfo_uptime_time="$(_sysinfo_fmt_duration $((now - boot)))"
+        fi
+        load="$(sysctl -n vm.loadavg 2>/dev/null | _sysinfo_norm_load)"
+    fi
+    if [[ -z "${load:-}" ]] && _sysinfo_has_cmd uptime; then
+        # macOS says "load averages:", Linux "load average:".
+        load="$(uptime 2>/dev/null | sed -n 's/.*load averages*: *//p' | _sysinfo_norm_load)"
+    fi
+    _sysinfo_uptime_load="${load:-N/A}"
+}
+
+# --- Linux ---------------------------------------------------------------------
+
+_sysinfo_linux_ram() {
+    local total_kb="" avail_kb=""
     if [[ -r /proc/meminfo ]]; then
         total_kb="$(awk '/^MemTotal:/ {print $2; exit}' /proc/meminfo 2>/dev/null)"
         avail_kb="$(awk '/^MemAvailable:/ {print $2; exit}' /proc/meminfo 2>/dev/null)"
     fi
 
-    if [[ -z "$total_kb" || -z "$avail_kb" ]]; then
-        if command -v free >/dev/null 2>&1; then
-            # Fallback: best-effort using `free -b`
-            local total_b avail_b
-            total_b="$(free -b 2>/dev/null | awk '/^Mem:/ {print $2; exit}')"
-            avail_b="$(free -b 2>/dev/null | awk '/^Mem:/ {print $7; exit}')"
-            if [[ -n "$total_b" && -n "$avail_b" ]]; then
-                ram_total="$(human_bytes "$total_b")"
-                ram_free="$(human_bytes "$avail_b")"
-                ram_used="$(human_bytes $((total_b - avail_b)))"
-                return 0
-            fi
-        fi
-        ram_total="N/A"
-        ram_used="N/A"
-        ram_free="N/A"
-        return 0
-    fi
-
     local total_b avail_b
-    total_b=$((total_kb * 1024))
-    avail_b=$((avail_kb * 1024))
-    ram_total="$(human_bytes "$total_b")"
-    ram_free="$(human_bytes "$avail_b")"
-    ram_used="$(human_bytes $((total_b - avail_b)))"
+    if [[ -n "$total_kb" && -n "$avail_kb" ]]; then
+        total_b=$((total_kb * 1024))
+        avail_b=$((avail_kb * 1024))
+    elif _sysinfo_has_cmd free; then
+        # Fallback: best-effort using `free -b`
+        total_b="$(free -b 2>/dev/null | awk '/^Mem:/ {print $2; exit}')"
+        avail_b="$(free -b 2>/dev/null | awk '/^Mem:/ {print $7; exit}')"
+    fi
+    [[ "${total_b:-}" =~ ^[0-9]+$ && "${avail_b:-}" =~ ^[0-9]+$ ]] || return 0
+
+    _sysinfo_ram_total="$(_sysinfo_human_bytes "$total_b")"
+    _sysinfo_ram_free="$(_sysinfo_human_bytes "$avail_b")"
+    _sysinfo_ram_used="$(_sysinfo_human_bytes $((total_b - avail_b)))"
 }
 
-# macOS-specific function to get disk information
-mac_disk_info() {
-    # Store the entire diskutil info output into a variable
-    if ! command -v diskutil >/dev/null 2>&1; then
-        startup_name="N/A"
-        startup_size="N/A"
-        startup_free="N/A"
-        startup_used="N/A"
-        return 0
-    fi
-
-    local disk_info
-    disk_info="$(diskutil info / 2>/dev/null || echo '')"
-
-    # Get startup disk name and size information
-    if _sysinfo_has_cmd osascript; then
-        startup_name="$(osascript -e 'tell app "Finder" to get name of startup disk' 2>/dev/null || echo 'N/A')"
-    else
-        startup_name="N/A"
-    fi
-    startup_size="$(printf "%s\n" "$disk_info" | grep "Container Total Space:" | awk '{print $4, $5}' 2>/dev/null || echo 'N/A')"
-    startup_free="$(printf "%s\n" "$disk_info" | grep "Container Free Space:" | awk '{print $4, $5}' 2>/dev/null || echo 'N/A')"
-
-    # Extract numeric values and remove 'B' suffix for processing
-    local size_value size_unit free_value free_unit
-    size_value="$(echo "$startup_size" | awk '{gsub("B", "", $2); print $1}' 2>/dev/null)"
-    size_unit="$(echo "$startup_size" | awk '{gsub("B", "", $2); print $2}' 2>/dev/null)"
-
-    free_value="$(echo "$startup_free" | awk '{gsub("B", "", $2); print $1}' 2>/dev/null)"
-    free_unit="$(echo "$startup_free" | awk '{gsub("B", "", $2); print $2}' 2>/dev/null)"
-
-    if command -v numfmt >/dev/null 2>&1 && [[ -n "$size_value" && -n "$size_unit" && -n "$free_value" && -n "$free_unit" ]]; then
-        # Convert sizes to bytes for calculation
-        local size_in_bytes free_in_bytes used_in_bytes
-        size_in_bytes="$(numfmt --from=iec "$size_value$size_unit" 2>/dev/null || echo '')"
-        free_in_bytes="$(numfmt --from=iec "$free_value$free_unit" 2>/dev/null || echo '')"
-
-        if [[ -n "$size_in_bytes" && -n "$free_in_bytes" ]]; then
-            # Calculate used space in bytes and convert it to a human-readable format
-            used_in_bytes=$((size_in_bytes - free_in_bytes))
-            startup_used="$(numfmt --to=iec --suffix=B "$used_in_bytes" 2>/dev/null || echo 'N/A')"
-        else
-            startup_used="N/A"
-        fi
-    else
-        startup_used="N/A"
-    fi
+_sysinfo_linux_disk() {
+    _sysinfo_startup_name="/"
+    _sysinfo_has_cmd df || return 0
+    local size used free
+    read -r size used free < <(df -h / 2>/dev/null | awk 'NR==2 {print $2, $3, $4}')
+    _sysinfo_startup_size="${size:-N/A}"
+    _sysinfo_startup_used="${used:-N/A}"
+    _sysinfo_startup_free="${free:-N/A}"
 }
 
-# macOS-specific function to get network information
-mac_get_network() {
-    if ! _sysinfo_has_cmd ifconfig || ! _sysinfo_has_cmd netstat; then
-        network_down="N/A"
-        network_up="N/A"
-        return 0
-    fi
-
-    local ifconfig_output
-    ifconfig_output="$(ifconfig "$net_int_mac" 2>/dev/null || echo 'N/A')"
-    
-    if [[ "$ifconfig_output" == "N/A" ]]; then
-        network_down="N/A"
-        network_up="N/A"
-    else
-        # Get network data (bytes sent/received) for the given network interface
-        network_down="$(netstat -ib 2>/dev/null | grep "$net_int_mac" | awk '{print $7}' | head -n 1 2>/dev/null || echo 'N/A')"
-        network_up="$(netstat -ib 2>/dev/null | grep "$net_int_mac" | awk '{print $10}' | head -n 1 2>/dev/null || echo 'N/A')"
-        
-        # Convert the byte counts to MB/s
-        network_down=$(convert_to_mbps "$network_down")
-        network_up=$(convert_to_mbps "$network_up")
-    fi
-}
-
-# macOS-specific function to get CPU usage
-mac_get_cpu() {
-    if ! _sysinfo_has_cmd top; then
-        cpu_used_user="N/A"
-        cpu_used_sys="N/A"
-        cpu_used_idle="N/A"
-        return 0
-    fi
-
-    local top_out
-    top_out="$(top -l 1 2>/dev/null | grep "CPU usage" | head -n 1 2>/dev/null || echo '')"
-    if [[ -z "$top_out" ]]; then
-        cpu_used_user="N/A"
-        cpu_used_sys="N/A"
-        cpu_used_idle="N/A"
-        return 0
-    fi
-
-    # Normalize to numeric values without the % sign.
-    cpu_used_user="$(printf '%s\n' "$top_out" | awk '{print $3}' | tr -d '%' 2>/dev/null || echo 'N/A')"
-    cpu_used_sys="$(printf '%s\n' "$top_out" | awk '{print $5}' | tr -d '%' 2>/dev/null || echo 'N/A')"
-    cpu_used_idle="$(printf '%s\n' "$top_out" | awk '{print $7}' | tr -d '%' 2>/dev/null || echo 'N/A')"
-}
-
-# macOS-specific function to get uptime information
-mac_get_uptime() {
-    if ! _sysinfo_has_cmd uptime; then
-        uptime_time="N/A"
-        uptime_load="N/A"
-        return 0
-    fi
-    uptime_time="$(uptime 2>/dev/null | awk -F', ' '{print $1}' | sed 's/.*up //' 2>/dev/null || echo 'N/A')"
-    uptime_load="$(uptime 2>/dev/null | awk '{print $10, $11, $12}' 2>/dev/null || echo 'N/A')"
-}
-
-# Linux-specific function to get disk information
-linux_disk_info() {
-    startup_name="/"
-    if ! _sysinfo_has_cmd df; then
-        startup_size="N/A"
-        startup_used="N/A"
-        startup_free="N/A"
-        return 0
-    fi
-    startup_size="$(df -h / 2>/dev/null | awk 'NR==2 {print $2}' 2>/dev/null || echo 'N/A')"
-    startup_used="$(df -h / 2>/dev/null | awk 'NR==2 {print $3}' 2>/dev/null || echo 'N/A')"
-    startup_free="$(df -h / 2>/dev/null | awk 'NR==2 {print $4}' 2>/dev/null || echo 'N/A')"
-}
-
-# Linux-specific function to get network information
-linux_get_network() {
-    if [[ ! -r /proc/net/dev ]]; then
-        network_down="N/A"
-        network_up="N/A"
-        return 0
-    fi
-
-    # Ensure we have a valid interface present in /proc/net/dev.
-    if [[ -z "${net_int_linux:-}" ]] || ! awk -v iface="$net_int_linux" 'BEGIN{ok=0} NR>2 && $1==iface":"{ok=1} END{exit ok?0:1}' /proc/net/dev 2>/dev/null; then
-        net_int_linux="$(awk 'NR>2 {gsub(":","",$1); if ($1 != "lo") {print $1; exit}}' /proc/net/dev 2>/dev/null || echo '')"
-    fi
-
-    if [[ -z "${net_int_linux:-}" ]]; then
-        network_down="N/A"
-        network_up="N/A"
-        return 0
-    fi
-
-    network_down="$(awk -v iface="$net_int_linux" 'NR>2 && $1==iface":" {print $2; exit}' /proc/net/dev 2>/dev/null || echo 'N/A')"
-    network_up="$(awk -v iface="$net_int_linux" 'NR>2 && $1==iface":" {print $10; exit}' /proc/net/dev 2>/dev/null || echo 'N/A')"
-
-    # Convert the byte counts to MB/s
-    network_down=$(convert_to_mbps "$network_down")
-    network_up=$(convert_to_mbps "$network_up")
-}
-
-# Linux-specific function to get CPU usage
-linux_get_cpu() {
-    if [[ ! -r /proc/stat ]]; then
-        cpu_used_user="N/A"
-        cpu_used_sys="N/A"
-        cpu_used_idle="N/A"
-        return 0
-    fi
-
-    local cpu_stat cpu_user cpu_sys cpu_idle total
-    cpu_stat="$(grep 'cpu ' /proc/stat 2>/dev/null || echo '')"
-    [[ -n "$cpu_stat" ]] || cpu_stat=""
-
-    # Parse CPU usage from /proc/stat
-    cpu_user="$(echo "$cpu_stat" | awk '{print $2}' 2>/dev/null)"
-    cpu_sys="$(echo "$cpu_stat" | awk '{print $4}' 2>/dev/null)"
-    cpu_idle="$(echo "$cpu_stat" | awk '{print $5}' 2>/dev/null)"
-
-    if [[ -z "$cpu_user" || -z "$cpu_sys" || -z "$cpu_idle" ]]; then
-        cpu_used_user="N/A"
-        cpu_used_sys="N/A"
-        cpu_used_idle="N/A"
-        return 0
-    fi
-
-    total=$((cpu_user + cpu_sys + cpu_idle))
-    
-    if [[ $total -ne 0 ]]; then
-        cpu_used_user=$((100 * cpu_user / total))
-        cpu_used_sys=$((100 * cpu_sys / total))
-        cpu_used_idle=$((100 * cpu_idle / total))
-    else
-        cpu_used_user="N/A"
-        cpu_used_sys="N/A"
-        cpu_used_idle="N/A"
-    fi
-}
-
-# Linux-specific function to get uptime information
-linux_get_uptime() {
-    if ! _sysinfo_has_cmd uptime; then
-        uptime_time="N/A"
-        uptime_load="N/A"
-        return 0
-    fi
-    uptime_time="$(uptime -p 2>/dev/null || echo 'N/A')"
-    uptime_load="$(uptime 2>/dev/null | awk -F'load average: ' '{print $2}' 2>/dev/null || echo 'N/A')"
-}
-
-# Function to detect the primary network interface for Linux
-detect_primary_interface() {
+# Detect the primary network interface (default route), falling back to the
+# first non-loopback interface in /proc/net/dev.
+_sysinfo_linux_detect_iface() {
     local iface=""
     if _sysinfo_has_cmd ip; then
-        iface="$(ip route 2>/dev/null | awk '/^default/ {print $5; exit}' 2>/dev/null || echo '')"
+        iface="$(ip route 2>/dev/null | awk '/^default/ {for (i = 1; i < NF; i++) if ($i == "dev") {print $(i + 1); exit}}')"
     fi
     # Fallback for restricted environments where `ip` can't query netlink.
     if [[ -z "$iface" && -r /proc/net/route ]]; then
-        iface="$(awk '$2 == "00000000" {print $1; exit}' /proc/net/route 2>/dev/null || echo '')"
+        iface="$(awk '$2 == "00000000" {print $1; exit}' /proc/net/route 2>/dev/null)"
     fi
-    net_int_linux="${iface:-eth0}"
+    if [[ -n "$iface" && -r /proc/net/dev ]] && ! awk -v iface="$iface" 'NR>2 {sub(/^[[:space:]]+/, ""); split($0, a, ":"); if (a[1] == iface) found = 1} END {exit found ? 0 : 1}' /proc/net/dev; then
+        iface=""
+    fi
+    if [[ -z "$iface" && -r /proc/net/dev ]]; then
+        iface="$(awk 'NR>2 {sub(/^[[:space:]]+/, ""); split($0, a, ":"); if (a[1] != "lo") {print a[1]; exit}}' /proc/net/dev 2>/dev/null)"
+    fi
+    _sysinfo_net_iface="$iface"
+}
+
+_sysinfo_linux_net() {
+    [[ -r /proc/net/dev && -n "$_sysinfo_net_iface" ]] || return 0
+    # "  eth0: 123 ..." -- the counter may be glued to the colon, so split on it.
+    local rx tx
+    read -r rx tx < <(awk -v iface="$_sysinfo_net_iface" 'NR>2 {
+        line = $0; sub(/^[[:space:]]+/, "", line)
+        n = index(line, ":"); if (substr(line, 1, n - 1) != iface) next
+        split(substr(line, n + 1), f, " "); print f[1], f[9]; exit
+    }' /proc/net/dev 2>/dev/null)
+    _sysinfo_network_down="$(_sysinfo_net_bytes "${rx:-}")"
+    _sysinfo_network_up="$(_sysinfo_net_bytes "${tx:-}")"
+}
+
+# /proc/stat "cpu" line -> "user sys idle total" jiffies.
+_sysinfo_linux_cpu_sample() {
+    awk '/^cpu / {print $2 + $3, $4 + $7 + $8, $5 + $6, $2 + $3 + $4 + $5 + $6 + $7 + $8 + $9; exit}' /proc/stat 2>/dev/null
+}
+
+_sysinfo_linux_cpu() {
+    [[ -r /proc/stat ]] || return 0
+    # /proc/stat counts since boot; sample twice to get *current* usage.
+    local u1 s1 i1 t1 u2 s2 i2 t2
+    read -r u1 s1 i1 t1 < <(_sysinfo_linux_cpu_sample)
+    sleep 0.25 2>/dev/null || sleep 1
+    read -r u2 s2 i2 t2 < <(_sysinfo_linux_cpu_sample)
+    [[ "${t1:-}" =~ ^[0-9]+$ && "${t2:-}" =~ ^[0-9]+$ ]] || return 0
+
+    local dt=$((t2 - t1))
+    if [[ "$dt" -le 0 ]]; then
+        # No ticks elapsed (very coarse clock): fall back to the since-boot average.
+        u1=0 s1=0 i1=0 dt="$t2"
+    fi
+    [[ "$dt" -gt 0 ]] || return 0
+    _sysinfo_cpu_used_user=$((100 * (u2 - u1) / dt))
+    _sysinfo_cpu_used_sys=$((100 * (s2 - s1) / dt))
+    _sysinfo_cpu_used_idle=$((100 * (i2 - i1) / dt))
+}
+
+_sysinfo_linux_uptime() {
+    local up="" secs="" load=""
+    # Prefer procps `uptime -p` (keeps its wording); busybox has no -p.
+    if _sysinfo_has_cmd uptime; then
+        up="$(uptime -p 2>/dev/null || true)"
+        [[ "$up" == up\ * ]] || up=""
+    fi
+    if [[ -z "$up" && -r /proc/uptime ]]; then
+        secs="$(awk '{print int($1); exit}' /proc/uptime 2>/dev/null)"
+        up="$(_sysinfo_fmt_duration "$secs")"
+    fi
+    _sysinfo_uptime_time="${up:-N/A}"
+
+    if [[ -r /proc/loadavg ]]; then
+        load="$(_sysinfo_norm_load < /proc/loadavg)"
+    elif _sysinfo_has_cmd uptime; then
+        load="$(uptime 2>/dev/null | sed -n 's/.*load averages*: *//p' | _sysinfo_norm_load)"
+    fi
+    _sysinfo_uptime_load="${load:-N/A}"
 }
 
 # Terminal UI helpers (tput/terminfo-backed).
@@ -525,6 +514,8 @@ _sysinfo_fmt_uptime_short() {
     # - "1 day, 2 hours, 3 minutes"
     printf '%s' "$s" | sed -E \
         -e 's/,//g' \
+        -e 's/[[:space:]]+years?/y/g' \
+        -e 's/[[:space:]]+weeks?/w/g' \
         -e 's/[[:space:]]+days?/d/g' \
         -e 's/[[:space:]]+hours?/h/g' \
         -e 's/[[:space:]]+minutes?/m/g' \
@@ -788,37 +779,37 @@ _sysinfo_render_box() {
     local row_bg
 
     row_bg="$(_sysinfo_box_row_bg "$row")"
-    content="$(_sysinfo_box_fmt_pair "$row_bg" "Name" "${os_name:-N/A}")$(_sysinfo_box_span "$row_bg" "" "  ")$(_sysinfo_box_fmt_pair "$row_bg" "Ver" "${os_ver:-N/A}")"
+    content="$(_sysinfo_box_fmt_pair "$row_bg" "Name" "${_sysinfo_os_name:-N/A}")$(_sysinfo_box_span "$row_bg" "" "  ")$(_sysinfo_box_fmt_pair "$row_bg" "Ver" "${_sysinfo_os_ver:-N/A}")"
     _sysinfo_box_print_row "$row_bg" "OS" "$content" "$label_w" "$value_w" "$v"
     row=$((row + 1))
 
     row_bg="$(_sysinfo_box_row_bg "$row")"
-    content="$(_sysinfo_box_fmt_used_total_free "$row_bg" "${startup_used:-N/A}" "${startup_size:-N/A}" "${startup_free:-N/A}")"
+    content="$(_sysinfo_box_fmt_used_total_free "$row_bg" "${_sysinfo_startup_used:-N/A}" "${_sysinfo_startup_size:-N/A}" "${_sysinfo_startup_free:-N/A}")"
     _sysinfo_box_print_row "$row_bg" "Disk" "$content" "$label_w" "$value_w" "$v"
     row=$((row + 1))
 
     row_bg="$(_sysinfo_box_row_bg "$row")"
-    content="$(_sysinfo_box_fmt_pair "$row_bg" "Up" "$(_sysinfo_fmt_uptime_short "${uptime_time:-N/A}")")"
+    content="$(_sysinfo_box_fmt_pair "$row_bg" "Up" "$(_sysinfo_fmt_uptime_short "${_sysinfo_uptime_time:-N/A}")")"
     _sysinfo_box_print_row "$row_bg" "Uptime" "$content" "$label_w" "$value_w" "$v"
     row=$((row + 1))
 
     row_bg="$(_sysinfo_box_row_bg "$row")"
-    content="$(_sysinfo_box_fmt_load "$row_bg" "${uptime_load:-N/A}")"
+    content="$(_sysinfo_box_fmt_load "$row_bg" "${_sysinfo_uptime_load:-N/A}")"
     _sysinfo_box_print_row "$row_bg" "Load" "$content" "$label_w" "$value_w" "$v"
     row=$((row + 1))
 
     row_bg="$(_sysinfo_box_row_bg "$row")"
-    content="$(_sysinfo_box_fmt_cpu "$row_bg" "${cpu_used_user:-N/A}" "${cpu_used_sys:-N/A}" "${cpu_used_idle:-N/A}")"
+    content="$(_sysinfo_box_fmt_cpu "$row_bg" "${_sysinfo_cpu_used_user:-N/A}" "${_sysinfo_cpu_used_sys:-N/A}" "${_sysinfo_cpu_used_idle:-N/A}")"
     _sysinfo_box_print_row "$row_bg" "CPU" "$content" "$label_w" "$value_w" "$v"
     row=$((row + 1))
 
     row_bg="$(_sysinfo_box_row_bg "$row")"
-    content="$(_sysinfo_box_fmt_used_total_free "$row_bg" "${ram_used:-N/A}" "${ram_total:-N/A}" "${ram_free:-N/A}")"
+    content="$(_sysinfo_box_fmt_used_total_free "$row_bg" "${_sysinfo_ram_used:-N/A}" "${_sysinfo_ram_total:-N/A}" "${_sysinfo_ram_free:-N/A}")"
     _sysinfo_box_print_row "$row_bg" "RAM" "$content" "$label_w" "$value_w" "$v"
     row=$((row + 1))
 
     row_bg="$(_sysinfo_box_row_bg "$row")"
-    content="$(_sysinfo_box_fmt_net "$row_bg" "${network_down:-N/A}" "${network_up:-N/A}")"
+    content="$(_sysinfo_box_fmt_net "$row_bg" "${_sysinfo_network_down:-N/A}" "${_sysinfo_network_up:-N/A}")"
     _sysinfo_box_print_row "$row_bg" "Net" "$content" "$label_w" "$value_w" "$v"
 
     printf '%s%s%s\n' \
@@ -838,13 +829,13 @@ _sysinfo_render_segments() {
     local c_label="$_SYSINFO_SGR_LABEL" c_value="$_SYSINFO_SGR_VALUE" c_reset="$_SYSINFO_SGR_RESET"
 
     local os disk uptime load cpu ram net
-    os="${os_name} ${os_ver}"
-    disk="${startup_name} $(_sysinfo_pretty_used_total_free "$startup_used" "$startup_size" "$startup_free")"
-    uptime="$(_sysinfo_fmt_uptime_short "$uptime_time")"
-    load="$(_sysinfo_pretty_load "$uptime_load")"
-    cpu="$(_sysinfo_pretty_cpu "$cpu_used_user" "$cpu_used_sys" "$cpu_used_idle")"
-    ram="$(_sysinfo_pretty_used_total_free "$ram_used" "$ram_total" "$ram_free")"
-    net="$(_sysinfo_pretty_net "$network_down" "$network_up")"
+    os="${_sysinfo_os_name} ${_sysinfo_os_ver}"
+    disk="${_sysinfo_startup_name} $(_sysinfo_pretty_used_total_free "$_sysinfo_startup_used" "$_sysinfo_startup_size" "$_sysinfo_startup_free")"
+    uptime="$(_sysinfo_fmt_uptime_short "$_sysinfo_uptime_time")"
+    load="$(_sysinfo_pretty_load "$_sysinfo_uptime_load")"
+    cpu="$(_sysinfo_pretty_cpu "$_sysinfo_cpu_used_user" "$_sysinfo_cpu_used_sys" "$_sysinfo_cpu_used_idle")"
+    ram="$(_sysinfo_pretty_used_total_free "$_sysinfo_ram_used" "$_sysinfo_ram_total" "$_sysinfo_ram_free")"
+    net="$(_sysinfo_pretty_net "$_sysinfo_network_down" "$_sysinfo_network_up")"
 
     local segments=(
         "${c_label}OS${c_reset}: ${c_value}${os}${c_reset}"
@@ -888,13 +879,13 @@ _sysinfo_render_table() {
     local c_label="$_SYSINFO_SGR_LABEL" c_value="$_SYSINFO_SGR_VALUE" c_reset="$_SYSINFO_SGR_RESET"
 
     local os disk uptime load cpu ram net
-    os="${os_name} ${os_ver}"
-    disk="${startup_name} $(_sysinfo_pretty_used_total_free "$startup_used" "$startup_size" "$startup_free")"
-    uptime="$(_sysinfo_fmt_uptime_short "$uptime_time")"
-    load="$(_sysinfo_pretty_load "$uptime_load")"
-    cpu="$(_sysinfo_pretty_cpu "$cpu_used_user" "$cpu_used_sys" "$cpu_used_idle")"
-    ram="$(_sysinfo_pretty_used_total_free "$ram_used" "$ram_total" "$ram_free")"
-    net="$(_sysinfo_pretty_net "$network_down" "$network_up")"
+    os="${_sysinfo_os_name} ${_sysinfo_os_ver}"
+    disk="${_sysinfo_startup_name} $(_sysinfo_pretty_used_total_free "$_sysinfo_startup_used" "$_sysinfo_startup_size" "$_sysinfo_startup_free")"
+    uptime="$(_sysinfo_fmt_uptime_short "$_sysinfo_uptime_time")"
+    load="$(_sysinfo_pretty_load "$_sysinfo_uptime_load")"
+    cpu="$(_sysinfo_pretty_cpu "$_sysinfo_cpu_used_user" "$_sysinfo_cpu_used_sys" "$_sysinfo_cpu_used_idle")"
+    ram="$(_sysinfo_pretty_used_total_free "$_sysinfo_ram_used" "$_sysinfo_ram_total" "$_sysinfo_ram_free")"
+    net="$(_sysinfo_pretty_net "$_sysinfo_network_down" "$_sysinfo_network_up")"
 
     printf '%s\n' \
         "${c_label}OS${c_reset} | ${c_label}Disk${c_reset} | ${c_label}Uptime${c_reset} | ${c_label}Load${c_reset} | ${c_label}CPU${c_reset} | ${c_label}RAM${c_reset} | ${c_label}Net${c_reset}"
@@ -902,7 +893,7 @@ _sysinfo_render_table() {
         "${c_value}${os}${c_reset} | ${c_value}${disk}${c_reset} | ${c_value}${uptime}${c_reset} | ${c_value}${load}${c_reset} | ${c_value}${cpu}${c_reset} | ${c_value}${ram}${c_reset} | ${c_value}${net}${c_reset}"
 }
 
-print_terminal() {
+_sysinfo_print_terminal() {
     local use_colour="${1:-1}"
     local layout="${2:-auto}"
     local cols
@@ -936,29 +927,29 @@ _sysinfo_print_kv() {
     local key value
     for key in "${_SYSINFO_KV_KEYS[@]}"; do
         case "$key" in
-            os) value="$os_name" ;; 
-            os_version) value="$os_ver" ;; 
-            boot_volume) value="$startup_name" ;; 
-            volume_size) value="$startup_size" ;; 
-            volume_used) value="$startup_used" ;; 
-            volume_free) value="$startup_free" ;; 
-            uptime) value="$uptime_time" ;; 
-            load_avg) value="$uptime_load" ;; 
-            cpu_user) value="$cpu_used_user" ;; 
-            cpu_sys) value="$cpu_used_sys" ;; 
-            cpu_idle) value="$cpu_used_idle" ;; 
-            ram_used) value="$ram_used" ;; 
-            ram_free) value="$ram_free" ;; 
-            ram_total) value="$ram_total" ;; 
-            net_rx) value="$network_down" ;; 
-            net_tx) value="$network_up" ;; 
-            *) value="N/A" ;; 
+            os) value="$_sysinfo_os_name" ;;
+            os_version) value="$_sysinfo_os_ver" ;;
+            boot_volume) value="$_sysinfo_startup_name" ;;
+            volume_size) value="$_sysinfo_startup_size" ;;
+            volume_used) value="$_sysinfo_startup_used" ;;
+            volume_free) value="$_sysinfo_startup_free" ;;
+            uptime) value="$_sysinfo_uptime_time" ;;
+            load_avg) value="$_sysinfo_uptime_load" ;;
+            cpu_user) value="$_sysinfo_cpu_used_user" ;;
+            cpu_sys) value="$_sysinfo_cpu_used_sys" ;;
+            cpu_idle) value="$_sysinfo_cpu_used_idle" ;;
+            ram_used) value="$_sysinfo_ram_used" ;;
+            ram_free) value="$_sysinfo_ram_free" ;;
+            ram_total) value="$_sysinfo_ram_total" ;;
+            net_rx) value="$_sysinfo_network_down" ;;
+            net_tx) value="$_sysinfo_network_up" ;;
+            *) value="N/A" ;;
         esac
         printf '%s=%s\n' "$key" "${value:-N/A}"
     done
 }
 
-sysinfo_usage() {
+_sysinfo_usage() {
     cat <<'USAGE'
 Usage: sysinfo [--help] [--plain|--no-color] [--kv] [--box|--table|--stacked]
 
@@ -984,31 +975,32 @@ Exit codes:
 USAGE
 }
 
-main() {
+_sysinfo_main() {
     local output_mode="${1:-human}"
     local use_colour="${2:-1}"
     local layout="${3:-auto}"
-    find_os || return 1
+    _sysinfo_reset
+    _sysinfo_find_os || return 1
 
-    if [[ $which_os -eq 1 ]]; then
-        mac_disk_info
-        mac_get_network
-        mac_get_cpu
-        mac_get_uptime
-        mac_get_ram
+    if [[ "$_sysinfo_which_os" -eq 1 ]]; then
+        _sysinfo_mac_disk
+        _sysinfo_mac_net
+        _sysinfo_mac_cpu
+        _sysinfo_mac_uptime
+        _sysinfo_mac_ram
     else
-        detect_primary_interface  # Detect primary network interface for Linux
-        linux_disk_info
-        linux_get_network
-        linux_get_cpu
-        linux_get_uptime
-        linux_get_ram
+        _sysinfo_linux_detect_iface
+        _sysinfo_linux_disk
+        _sysinfo_linux_net
+        _sysinfo_linux_cpu
+        _sysinfo_linux_uptime
+        _sysinfo_linux_ram
     fi
 
     if [[ "$output_mode" == "kv" ]]; then
         _sysinfo_print_kv
     else
-        print_terminal "$use_colour" "$layout"
+        _sysinfo_print_terminal "$use_colour" "$layout"
     fi
 }
 
@@ -1020,7 +1012,7 @@ sysinfo() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -h|--help)
-                sysinfo_usage
+                _sysinfo_usage
                 return 0
                 ;;
             --kv|--key-value)
@@ -1047,7 +1039,7 @@ sysinfo() {
                 ;;
             *)
                 echo "sysinfo: unknown option: $1" >&2
-                sysinfo_usage >&2
+                _sysinfo_usage >&2
                 return 2
                 ;;
         esac
@@ -1067,7 +1059,7 @@ sysinfo() {
             ;;
     esac
 
-    main "$output_mode" "$use_colour" "$layout"
+    _sysinfo_main "$output_mode" "$use_colour" "$layout"
 }
 
 #------------------------------------------------------------------------------

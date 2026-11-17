@@ -29,7 +29,6 @@ Read the relevant doc before touching that area:
 
 - **`docs/v2.0/compatibility_contract.md`** — Bash **3.2** (macOS `/bin/bash`) and 4.x+ are both supported; install paths are part of the contract.
 - **`docs/v2.0/helper_contract.md`** — `-h/--help` exits 0; unknown flag exits 2 with `<helper>: unknown option`; runtime error exits 1; missing optional tool ⇒ `N/A`, never a failure; `--kv` keys and **key order** are stable API.
-- **`docs/v2.0/deprecation_policy.md`** — renames go through a deprecation path (see `__bp_deprecated_env` in `.bash_profile`), never a hard break.
 
 ### Safe-to-source (non-negotiable)
 
@@ -58,7 +57,7 @@ make docker-test   # same suite + a real install, in ubuntu/debian/fedora/bash3.
 make docker-test TARGETS="bash32"   # quickest way to catch Bash 4+ syntax
 ```
 
-- Run `make lint` and `make test` before calling work done; run `make docker-test TARGETS=bash32` for anything touching shell syntax if Docker is available. Report failures honestly — don't weaken a test to make it pass.
+- Run `make lint` and `make test` before calling work done (`make hooks` makes git run them on every commit); run `make docker-test TARGETS=bash32` for anything touching shell syntax if Docker is available. Report failures honestly — don't weaken a test to make it pass.
 - New helper or new `--kv` key ⇒ update `docs/v2.0/helper_contract.md` **and** `tests/helper_contract.sh`. Ask before adding flags that aren't in the helper contract.
 - User-visible change ⇒ update `readme.md` (keep it beginner-friendly) and add a line under `## Unreleased` in `docs/v1.0/CHANGELOG.md`.
 - Roadmap status markers: ✅ done, ⏳ in progress, 🟡 not started.
@@ -69,8 +68,7 @@ make docker-test TARGETS="bash32"   # quickest way to catch Bash 4+ syntax
 The project was renamed from *My-Mac-Bash-profile* to **ShellMate**. Runtime names
 still use the old identifiers on purpose — `~/.my-mac-bash-profile`,
 `~/.config/my-mac-bash-profile/`, `mm_bash_profile_doctor`, `__MMBP_*` — because
-they're part of the compatibility contract. Don't rename them ad hoc; any migration
-needs a fallback for the old path/name per the deprecation policy.
+they're part of the compatibility contract. Don't rename them ad hoc; ask first.
 
 ## When unsure
 

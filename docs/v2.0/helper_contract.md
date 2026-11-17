@@ -43,7 +43,7 @@ All helpers listed above agree to the following rules (unless noted):
 
 ## `--kv` key order (stable machine output)
 
-The `--kv` mode is intentionally conservative: it prints one `key=value` pair per line with no extra frills. The keys listed below are part of the compatibility contract, so changing or reordering them requires a deprecation path.
+The `--kv` mode is intentionally conservative: it prints one `key=value` pair per line with no extra frills. The keys listed below are part of the compatibility contract, so changing or reordering them is a breaking change: ask first and note it in the CHANGELOG.
 
 ### `sysinfo --kv`
 
@@ -81,6 +81,8 @@ external_hostname
 city
 ```
 
+`local_ip` is a bare address without a `/prefix` on every OS (the default interface's IPv4 address). `external_ip` is `N/A` unless the lookup returned a valid IPv4/IPv6 address; network-provided text (`external_hostname`, `city`) has control characters stripped.
+
 These keys align with the `netinfo` variables and match the output of `tests/helper_contract.sh` so that scripts can rely on predictable parsing. Optional values such as `vpn_interfaces` gracefully fall back to `N/A` (or `none` for VPN when no interface is detected).
 
 ## Helper inventory + current contract gaps
@@ -93,11 +95,12 @@ This table summarizes each helper’s CLI surface, current differences, and how 
 | `netinfo` | `-h`, `--help`, `--kv`, `--plain`, `--no-color`, `--color`, `--box`, `--stacked` | `0`, `1`, `2` | Every network field may become `N/A`; `vpn_interfaces` uses `none` when no VPN detected | Already compliant; `tests/helper_contract.sh` enforces `--kv` keys. |
 | `extract` | `-h`, `--help`, `-v`, `--verbose`, `-l`, `--list`, `-f`, `--force` | `0`, `1`, `2` | Refuses path traversal unless `--force`, prints `N/A`-style warnings when tools are missing | `extract` is human-only, so the CLI contract focuses on return codes and safety. |
 | `flushdns` | `-h`, `--help`, `--dry-run`, `--restart`, `--status` | `0`, `1`, `2` | If no DNS service is found the helper prints a friendly message and exits `1` | Fast distributions guard ensures no prompts; tests rely on `--help` stability. |
-| `jd` / `jdir` | `-h`, `--help`, `--dry-run`, `--recursive` (jdir via default) | `0`, `1`, `2`, `127` when `wget` missing | When `wget` missing they exit `127` (in line with shell conventions) | They simply wrap `wget`, so contract enforcement is limited to help text + exit codes. |
+| `jd` / `jdir` | `-h`, `--help`, `--dry-run`, `--recursive` (jdir via default); any other flag before the URL is unknown (`wget` flags go after the URL) | `0`, `1`, `2`, `127` when `wget` missing | When `wget` missing they exit `127` (in line with shell conventions) | They simply wrap `wget`, so contract enforcement is limited to help text + exit codes. |
+| `pathinfo` | `-h`, `--help`, `--duplicates`, `--missing` | `0`, `2` | Empty PATH entries (current directory) are listed, including a trailing `:` | Human-only; covered by the shared `--help` / unknown-flag checks. |
 
 ## Testing expectations
 
-- `tests/helper_contract.sh` lives in the `tests/` directory and runs every helper’s `--help` path plus the `--kv` verification. It is invoked from `make test` so CI enforces the helper contract on Linux and macOS.
+- `tests/helper_contract.sh` lives in the `tests/` directory and runs every helper’s `--help` path, checks that an unknown flag exits `2` with `<helper>: unknown option`, and verifies the `--kv` keys. It is invoked from `make test` so CI enforces the helper contract on Linux and macOS.
 - A future helper that joins the contract should add itself to `tests/helper_contract.sh` and update this doc so reviewers can see the CLI surface and the expected `--kv` keys.
 
 By keeping this doc and the companion test in sync, we ensure B-004 (“flag/exit-code drift between helpers”) stays resolved and P2 remains stable.

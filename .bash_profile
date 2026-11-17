@@ -1,48 +1,6 @@
 #!/usr/bin/env bash
 
 #------------------------------------------------------------------------------
-## Aliases and environment variables
-# Common convenience aliases and environment variable exports.
-# Easy to remember aliases for common commands.
-#------------------------------------------------------------------------------
-
-if ${IS_MAC:-false}; then
-	alias ls='ls -GFhla'
-else
-	# GNU ls: keep similar UX.
-	alias ls='ls --color=auto -Fhla'
-fi
-
-
-#------------------------------------------------------------------------------
-## Export PATHS
-# Common PATH exports and hygiene.
-#------------------------------------------------------------------------------
-
-if [[ "${BASH_PROFILE_SET_PS1:-1}" != "0" ]]; then
-	export PS1="\[\e[36;40m\]\u\[\e[m\]\[\e[35m\]@\[\e[m\][\[\e[33m\]\h\[\e[m\]]\[\e[36m\]\w\[\e[m\]: "
-fi
-
-# macOS color env is harmless elsewhere, but only set when on macOS.
-if ${IS_MAC:-false}; then
-	export CLICOLOR=1
-	export LSCOLORS=ExFxBxDxCxegedabagacad
-	export BASH_SILENCE_DEPRECATION_WARNING=1
-fi
-
-# PATH hygiene: only prepend directories that exist.
-if declare -F path_prepend_if_exists >/dev/null 2>&1; then
-	path_prepend_if_exists "/usr/local/sbin"
-	path_prepend_if_exists "/opt/local/bin"
-	path_prepend_if_exists "/opt/local/sbin"
-	path_prepend_if_exists "/usr/local/opt/curl/bin"
-	path_prepend_if_exists "/usr/local/opt/cython/bin"
-else
-	export PATH="/usr/local/sbin:$PATH"
-	export PATH="/opt/local/bin:/opt/local/sbin:$PATH"
-fi
-
-#------------------------------------------------------------------------------
 # Bash login profile (portable: macOS + Linux)
 #
 # This file is typically symlinked to ~/.bash_profile.
@@ -86,33 +44,18 @@ export BASH_SILENCE_DEPRECATION_WARNING=1
 __bp_modules_enable="${BASH_PROFILE_MODULES_ENABLE:-}"
 __bp_modules_disable="${BASH_PROFILE_MODULES_DISABLE:-}"
 
-# shellcheck disable=SC2329
+# Shared warning helpers for modules; may have no callers, which ShellCheck
+# reports as SC2317 (<=0.10) or SC2329 (>=0.11).
+# shellcheck disable=SC2317,SC2329
 __bp_is_interactive() {
 	[[ $- == *i* ]]
 }
 
-# shellcheck disable=SC2329
+# shellcheck disable=SC2317,SC2329
 __bp_warn() {
 	# Warnings must be interactive-only to avoid breaking scripts.
 	__bp_is_interactive || return 0
 	printf '%s\n' "$*" >&2
-}
-
-# shellcheck disable=SC2329
-__bp_deprecated_env() {
-	# Usage: __bp_deprecated_env OLD_ENV NEW_ENV
-	# If OLD_ENV is set and NEW_ENV is not, copy the value and warn.
-	local old_name="$1"
-	local new_name="$2"
-	# Indirect expansion: safe in Bash 3.2.
-	local old_val="${!old_name-}"
-	local new_val="${!new_name-}"
-
-	[[ -n "$old_val" ]] || return 0
-	[[ -z "$new_val" ]] || return 0
-
-	export "${new_name}=${old_val}"
-	__bp_warn "shellmate: '$old_name' is deprecated; use '$new_name' instead"
 }
 
 __bp_list_contains_any() {
@@ -151,6 +94,54 @@ __bp_should_source_module() {
 if [[ -r "$__bp_profile_d/10-common.sh" ]]; then
 	# shellcheck source=/dev/null
 	source "$__bp_profile_d/10-common.sh"
+fi
+
+# Aliases, prompt and PATH need IS_MAC + path_prepend_if_exists from
+# 10-common.sh, so they must come after it (and before other modules, so
+# modules and local overrides can still change them).
+#------------------------------------------------------------------------------
+## Aliases and environment variables
+# Common convenience aliases and environment variable exports.
+# Easy to remember aliases for common commands.
+#------------------------------------------------------------------------------
+
+if [[ "${IS_MAC:-false}" == "true" ]]; then
+	alias ls='ls -GFhla'
+else
+	# GNU ls: keep similar UX.
+	alias ls='ls --color=auto -Fhla'
+fi
+
+
+#------------------------------------------------------------------------------
+## Export PATHS
+# Common PATH exports and hygiene.
+#------------------------------------------------------------------------------
+
+if [[ "${BASH_PROFILE_SET_PS1:-1}" != "0" ]]; then
+	export PS1="\[\e[36;40m\]\u\[\e[m\]\[\e[35m\]@\[\e[m\][\[\e[33m\]\h\[\e[m\]]\[\e[36m\]\w\[\e[m\]: "
+fi
+
+# macOS color env is harmless elsewhere, but only set when on macOS.
+if [[ "${IS_MAC:-false}" == "true" ]]; then
+	export CLICOLOR=1
+	export LSCOLORS=ExFxBxDxCxegedabagacad
+	export BASH_SILENCE_DEPRECATION_WARNING=1
+fi
+
+# PATH hygiene: only prepend directories that exist.
+if declare -F path_prepend_if_exists >/dev/null 2>&1; then
+	path_prepend_if_exists "/usr/local/sbin"
+	path_prepend_if_exists "/opt/local/bin"
+	path_prepend_if_exists "/opt/local/sbin"
+	path_prepend_if_exists "/usr/local/opt/curl/bin"
+	path_prepend_if_exists "/usr/local/opt/cython/bin"
+else
+	# 10-common.sh missing: same rule, inline.
+	for __bp_f in /usr/local/sbin /opt/local/bin /opt/local/sbin; do
+		[[ -d "$__bp_f" ]] && PATH="$__bp_f:$PATH"
+	done
+	export PATH
 fi
 
 
@@ -216,7 +207,7 @@ if [[ -d "$__bp_profile_d" ]]; then
 fi
 
 unset __bp_source __bp_dir __bp_link __bp_root __bp_profile_d __bp_f __bp_modules_enable __bp_modules_disable
-unset -f __bp_list_contains_any __bp_should_source_module __bp_is_interactive __bp_warn __bp_deprecated_env 2>/dev/null || true
+unset -f __bp_list_contains_any __bp_should_source_module __bp_is_interactive __bp_warn 2>/dev/null || true
 
 #-----------------------------------
 ## END

@@ -27,7 +27,6 @@ require_contains() {
 
 require_file "$repo_root/docs/v2.0/release_process.md"
 require_file "$repo_root/docs/v2.0/migration_from_v1.md"
-require_file "$repo_root/docs/v2.0/deprecation_policy.md"
 
 require_file "$repo_root/docs/v1.0/CHANGELOG.md"
 require_contains "$repo_root/docs/v1.0/CHANGELOG.md" "## Unreleased"

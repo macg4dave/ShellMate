@@ -16,7 +16,7 @@
 ARG TARGET=ubuntu
 
 # --- ubuntu -------------------------------------------------------------------
-FROM ubuntu:24.04 AS base-ubuntu
+FROM docker.io/library/ubuntu:24.04 AS base-ubuntu
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       bash make shellcheck ca-certificates curl iproute2 procps \
@@ -25,7 +25,7 @@ RUN apt-get update \
  && useradd -m -s /bin/bash tester
 
 # --- debian -------------------------------------------------------------------
-FROM debian:12-slim AS base-debian
+FROM docker.io/library/debian:12-slim AS base-debian
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       bash make procps \
@@ -33,14 +33,14 @@ RUN apt-get update \
  && useradd -m -s /bin/bash tester
 
 # --- fedora -------------------------------------------------------------------
-FROM fedora:41 AS base-fedora
+FROM docker.io/library/fedora:41 AS base-fedora
 RUN dnf install -y --setopt=install_weak_deps=False \
       bash make ShellCheck iproute procps-ng findutils unzip xz which \
  && dnf clean all \
  && useradd -m -s /bin/bash tester
 
 # --- bash 3.2 -----------------------------------------------------------------
-FROM bash:3.2 AS base-bash32
+FROM docker.io/library/bash:3.2 AS base-bash32
 # The official image puts bash 3.2 at /usr/local/bin/bash; make /bin/bash point
 # at it too so nothing silently falls back to a newer shell.
 RUN apk add --no-cache make coreutils \

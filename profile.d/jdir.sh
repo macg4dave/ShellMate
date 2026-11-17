@@ -60,6 +60,10 @@ EOF
 				return 0
 				;;
 			--) shift; break ;;
+			-*)
+				echo "jdir: unknown option: $1 (wget options go after the URL)" >&2
+				return 2
+				;;
 			*) break ;;
 		esac
 		shift
@@ -103,6 +107,10 @@ EOF
 				return 0
 				;;
 			--) shift; break ;;
+			-*)
+				echo "jd: unknown option: $1 (wget options go after the URL)" >&2
+				return 2
+				;;
 			*) break ;;
 		esac
 		shift

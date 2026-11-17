@@ -145,7 +145,7 @@ Keys (stable order):
 - `volume_free`
 - `uptime`
 - `load_avg`
-- `cpu_user` (percent, numeric)
+- `cpu_user` (percent, numeric; current usage sampled over ~0.25s on Linux / 1s on macOS)
 - `cpu_sys` (percent, numeric)
 - `cpu_idle` (percent, numeric)
 - `ram_used`
@@ -162,7 +162,7 @@ Keys (stable order):
 - `local_hostname`
 - `default_interface`
 - `gateway`
-- `local_ip`
+- `local_ip` (bare address, no `/prefix`)
 - `vpn_interfaces` (`none` if none detected)
 - `external_ip` (cached; set `NETINFO_EXTERNAL_IP=0` to disable lookup)
 - `external_hostname` (cached; set `NETINFO_EXTERNAL_IP=0` to disable lookup)

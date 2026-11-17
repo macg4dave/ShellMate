@@ -9,9 +9,8 @@ if ! declare -F has_cmd >/dev/null 2>&1; then
     has_cmd() { command -v "$1" >/dev/null 2>&1; }
 fi
 
-extract() {
-    extract_usage() {
-        cat <<'USAGE'
+_extract_usage() {
+    cat <<'USAGE'
 Usage: extract [--help] [-v|--verbose] [-l|--list] [-f|--force] <archive> [dest]
 
 Options:
@@ -25,137 +24,146 @@ Exit codes:
   1 runtime error
   2 usage/unknown option
 USAGE
-    }
+}
 
-    local verbose=false list=false force=false archive dest
+# Safety: refuse obvious path traversal unless forced.
+# Usage: _extract_check_paths <archive> <list-cmd...>   (list-cmd prints one path per line)
+_extract_check_paths() {
+    local file="$1"
+    shift
+    local line
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        if [[ "$line" == /* || "$line" == ".." || "$line" == ../* || "$line" == *"/../"* || "$line" == */.. ]]; then
+            echo "extract: potential unsafe path detected: $line (use --force to override)" >&2
+            return 1
+        fi
+    done < <("$@" "$file")
+}
+
+# `7z l -ba` prefixes each path with date/size columns; print bare paths instead.
+_extract_7z_paths() {
+    7z l -slt -ba "$1" 2>/dev/null | sed -n 's/^Path = //p'
+}
+
+# Decompress a single-file format (.gz, .bz2, ...) without clobbering.
+# Usage: _extract_single <force:true|false> <out> <cmd...>   (cmd writes to stdout)
+_extract_single() {
+    local force="$1" out="$2"
+    shift 2
+    if [[ -e "$out" ]] && ! $force; then
+        echo "extract: '$out' already exists (use --force to overwrite)" >&2
+        return 1
+    fi
+    "$@" > "$out"
+}
+
+extract() {
+    local verbose=false list=false force=false archive="" dest=""
+    local positional=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            -h|--help)    extract_usage; return 0 ;;
+            -h|--help)    _extract_usage; return 0 ;;
             -v|--verbose) verbose=true ;;
             -l|--list)    list=true ;;
             -f|--force)   force=true ;;
-            --) shift; break ;;
-            -*) echo "Unknown option: $1" >&2; extract_usage >&2; return 2 ;;
-            *)  archive="${archive:-$1}" ;;
+            --) shift; positional+=("$@"); break ;;
+            -*) echo "extract: unknown option: $1" >&2; _extract_usage >&2; return 2 ;;
+            *)  positional+=("$1") ;;
         esac
         shift
     done
-    if [[ -z "$archive" ]]; then
-        extract_usage >&2
+    if [[ ${#positional[@]} -gt 2 ]]; then
+        echo "extract: too many arguments (expected <archive> [dest])" >&2
         return 2
     fi
-    [[ $# -gt 0 ]] && dest="$1"
+    [[ ${#positional[@]} -ge 1 ]] && archive="${positional[0]}"
+    [[ ${#positional[@]} -ge 2 ]] && dest="${positional[1]}"
+    if [[ -z "$archive" ]]; then
+        _extract_usage >&2
+        return 2
+    fi
 
     if [[ ! -f "$archive" || ! -r "$archive" ]]; then
-        echo "Archive '$archive' is not readable." >&2
+        echo "extract: archive '$archive' is not readable." >&2
         return 1
     fi
 
     local archive_name base lc
     archive_name="$(basename "$archive")"
+    # Lowercased name for format matching, so patterns below are lowercase only.
     lc="$(LC_ALL=C printf '%s' "$archive_name" | tr '[:upper:]' '[:lower:]')"
-
-    # Guess destination directory if not provided.
-    case "$lc" in
-        *.tar.gz|*.tgz|*.tar.bz2|*.tbz2|*.tar.xz|*.txz|*.tar.z|*.tar.Z)
-            base="${archive_name%%.tar.*}"
-            ;;
-        *.tar.*)
-            base="${archive_name%%.tar.*}"
-            ;;
-        *)
-            base="${archive_name%.*}"
-            ;;
-    esac
-    dest="${dest:-$base}"
-
-    # Safety: refuse obvious path traversal in tar/zip/7z unless forced.
-    _extract_check_paths() {
-        # Usage: _extract_check_paths <archive> <list-cmd...>
-        local file="$1"
-        shift
-        local line
-        while IFS= read -r line; do
-            [[ -z "$line" ]] && continue
-            if [[ "$line" == /* || "$line" == ../* || "$line" == *"/../"* ]]; then
-                echo "Potential unsafe path detected: $line (use --force to override)" >&2
-                return 1
-            fi
-        done < <("$@" "$file")
-    }
-
-    [[ -d "$dest" ]] || mkdir -p "$dest"
-
-    # Don't overwrite existing files unless --force was requested.
-    # GNU tar supports: --keep-old-files
-    # bsdtar (macOS /usr/bin/tar) supports: -k
-    local tar_keep=()
-    if ! $force; then
-        if tar --help 2>/dev/null | grep -q -- '--keep-old-files'; then
-            tar_keep=("--keep-old-files")
-        else
-            tar_keep=(-k)
-        fi
-    fi
 
     if $list; then
         case "$lc" in
             *.tar.bz2|*.tbz2)   tar tjf "$archive" ;;
             *.tar.gz|*.tgz)     tar tzf "$archive" ;;
             *.tar.xz|*.txz)     tar tJf "$archive" ;;
-            *.tar.z|*.tar.Z)    tar tZf "$archive" ;;
+            *.tar.z)            tar tZf "$archive" ;;
             *.tar)              tar tf "$archive" ;;
             *.zip)              unzip -l "$archive" ;;
             *.rar)              unrar l "$archive" ;;
             *.7z)               7z l "$archive" ;;
-            *.gz|*.bz2|*.xz|*.lzma|*.Z)
+            *.gz|*.bz2|*.xz|*.lzma|*.z)
                 echo "Listing not supported for single-file compression; will output filename only."
                 echo "${archive_name%.*}"
                 ;;
             *)
-                echo "Cannot list '$archive' (unknown format)" >&2
+                echo "extract: cannot list '$archive' (unknown format)" >&2
                 return 1
                 ;;
         esac
         return $?
     fi
 
+    # Guess destination directory if not provided.
+    case "$lc" in
+        *.tar.*) base="${archive_name%.[Tt][Aa][Rr].*}" ;;
+        *)       base="${archive_name%.*}" ;;
+    esac
+    dest="${dest:-$base}"
+
+    # Reject unsupported formats before creating anything on disk.
+    case "$lc" in
+        *.tar.bz2|*.tbz2|*.tar.gz|*.tgz|*.tar.xz|*.txz|*.tar.z|*.tar|*.zip|*.rar|*.7z|*.gz|*.bz2|*.xz|*.lzma|*.z) ;;
+        *)
+            echo "extract: cannot extract '$archive' (unsupported format)" >&2
+            return 1
+            ;;
+    esac
+
+    [[ -d "$dest" ]] || mkdir -p "$dest" || return 1
+
+    # Don't overwrite existing files unless --force was requested.
+    # GNU tar supports: --keep-old-files
+    # bsdtar (macOS /usr/bin/tar) supports: -k
+    local tar_opts=()
+    if ! $force; then
+        if tar --help 2>/dev/null | grep -q -- '--keep-old-files'; then
+            tar_opts+=("--keep-old-files")
+        else
+            tar_opts+=(-k)
+        fi
+    fi
+    $verbose && tar_opts+=(-v)
+
     local cmd_desc=""
     case "$lc" in
-        *.tar.bz2|*.tbz2)
+        *.tar.bz2|*.tbz2|*.tar.gz|*.tgz|*.tar.xz|*.txz|*.tar.z|*.tar)
+            local tar_mode
+            case "$lc" in
+                *.tar.bz2|*.tbz2) tar_mode=j ;;
+                *.tar.gz|*.tgz)   tar_mode=z ;;
+                *.tar.xz|*.txz)   tar_mode=J ;;
+                *.tar.z)          tar_mode=Z ;;
+                *)                tar_mode="" ;;
+            esac
             if ! $force; then
-                _extract_check_paths "$archive" tar tjf || return 1
+                _extract_check_paths "$archive" tar "t${tar_mode}f" || return 1
             fi
-            cmd_desc="tar xjf"
-            tar xjf "$archive" -C "$dest" "${tar_keep[@]}" ${verbose:+-v}
-            ;;
-        *.tar.gz|*.tgz)
-            if ! $force; then
-                _extract_check_paths "$archive" tar tzf || return 1
-            fi
-            cmd_desc="tar xzf"
-            tar xzf "$archive" -C "$dest" "${tar_keep[@]}" ${verbose:+-v}
-            ;;
-        *.tar.xz|*.txz)
-            if ! $force; then
-                _extract_check_paths "$archive" tar tJf || return 1
-            fi
-            cmd_desc="tar xJf"
-            tar xJf "$archive" -C "$dest" "${tar_keep[@]}" ${verbose:+-v}
-            ;;
-        *.tar.z|*.tar.Z)
-            if ! $force; then
-                _extract_check_paths "$archive" tar tZf || return 1
-            fi
-            cmd_desc="tar xZf"
-            tar xZf "$archive" -C "$dest" "${tar_keep[@]}" ${verbose:+-v}
-            ;;
-        *.tar)
-            if ! $force; then
-                _extract_check_paths "$archive" tar tf || return 1
-            fi
-            cmd_desc="tar xf"
-            tar xf "$archive" -C "$dest" "${tar_keep[@]}" ${verbose:+-v}
+            cmd_desc="tar x${tar_mode}f"
+            # ${arr[@]+...}: an empty array is "unbound" under set -u in Bash < 4.4.
+            tar "x${tar_mode}f" "$archive" -C "$dest" ${tar_opts[@]+"${tar_opts[@]}"}
             ;;
         *.zip)
             if ! has_cmd unzip; then
@@ -166,7 +174,12 @@ USAGE
                 _extract_check_paths "$archive" unzip -Z1 || return 1
             fi
             cmd_desc="unzip"
-            unzip ${force:+-o} ${verbose:+-v} -d "$dest" "$archive"
+            # -o overwrite / -n never overwrite (without either, unzip prompts).
+            # Note: unzip's -v means "list verbosely", so verbose maps to dropping -q.
+            local unzip_opts=(-n)
+            $force && unzip_opts=(-o)
+            $verbose || unzip_opts+=(-q)
+            unzip "${unzip_opts[@]}" "$archive" -d "$dest"
             ;;
         *.rar)
             if ! has_cmd unrar; then
@@ -174,7 +187,9 @@ USAGE
                 return 1
             fi
             cmd_desc="unrar"
-            unrar x ${force:+-o+} "$archive" "$dest/"
+            local unrar_overwrite="-o-"
+            $force && unrar_overwrite="-o+"
+            unrar x "$unrar_overwrite" "$archive" "$dest/"
             ;;
         *.7z)
             if ! has_cmd 7z; then
@@ -182,10 +197,18 @@ USAGE
                 return 1
             fi
             if ! $force; then
-                _extract_check_paths "$archive" 7z l -ba || return 1
+                _extract_check_paths "$archive" _extract_7z_paths || return 1
             fi
             cmd_desc="7z x"
-            7z x "$archive" -o"$dest" ${verbose:+-bb1}
+            # -aoa overwrite all / -aos skip existing (without either, 7z prompts).
+            local sz_opts=(-aos)
+            $force && sz_opts=(-aoa)
+            if $verbose; then
+                sz_opts+=(-bb1)
+            else
+                sz_opts+=(-bso0 -bsp0)   # quiet like tar/unzip; errors still go to stderr
+            fi
+            7z x "$archive" -o"$dest" "${sz_opts[@]}"
             ;;
         *.gz)
             if ! has_cmd gunzip; then
@@ -193,8 +216,7 @@ USAGE
                 return 1
             fi
             cmd_desc="gunzip"
-            local out="${archive_name%.gz}"
-            gunzip -c "$archive" > "$dest/$out"
+            _extract_single "$force" "$dest/${archive_name%.*}" gunzip -c "$archive"
             ;;
         *.bz2)
             if ! has_cmd bunzip2; then
@@ -202,8 +224,7 @@ USAGE
                 return 1
             fi
             cmd_desc="bunzip2"
-            local out_bz="${archive_name%.bz2}"
-            bunzip2 -c "$archive" > "$dest/$out_bz"
+            _extract_single "$force" "$dest/${archive_name%.*}" bunzip2 -c "$archive"
             ;;
         *.xz)
             if ! has_cmd xz; then
@@ -211,8 +232,7 @@ USAGE
                 return 1
             fi
             cmd_desc="xz --decompress"
-            local out_xz="${archive_name%.xz}"
-            xz -dc "$archive" > "$dest/$out_xz"
+            _extract_single "$force" "$dest/${archive_name%.*}" xz -dc "$archive"
             ;;
         *.lzma)
             if ! has_cmd xz; then
@@ -220,24 +240,27 @@ USAGE
                 return 1
             fi
             cmd_desc="xz --format=lzma --decompress"
-            local out_lz="${archive_name%.lzma}"
-            xz --format=lzma -dc "$archive" > "$dest/$out_lz"
+            _extract_single "$force" "$dest/${archive_name%.*}" xz --format=lzma -dc "$archive"
             ;;
-        *.Z)
-            if ! has_cmd uncompress; then
-                echo "uncompress is required to extract .Z files." >&2
+        *.z)
+            # gzip reads compress(1) .Z files too, and is far more common.
+            if has_cmd uncompress; then
+                cmd_desc="uncompress"
+                _extract_single "$force" "$dest/${archive_name%.*}" uncompress -c "$archive"
+            elif has_cmd gzip; then
+                cmd_desc="gzip --decompress"
+                _extract_single "$force" "$dest/${archive_name%.*}" gzip -dc "$archive"
+            else
+                echo "uncompress or gzip is required to extract .Z files." >&2
                 return 1
             fi
-            cmd_desc="uncompress"
-            uncompress -c "$archive" > "$dest/${archive_name%.Z}"
             ;;
-        *)
-            echo "Cannot extract '$archive' (unsupported format)" >&2
-            return 1
-            ;;
-    esac
+    esac || return 1   # contract: runtime failure exits 1 (not the tool's own code)
 
-    $verbose && echo "Extracted with: $cmd_desc -> $dest"
+    if $verbose; then
+        echo "Extracted with: $cmd_desc -> $dest"
+    fi
+    return 0
 }
 
 #------------------------------------------------------------------------------

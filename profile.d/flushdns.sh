@@ -43,6 +43,18 @@ _flushdns_run() {
 	fi
 }
 
+_flushdns_run_root_quiet() {
+	# Usage: _flushdns_run_root_quiet <dry_run:0|1> <cmd...>
+	# Best-effort command: silence output and ignore failure -- but in dry-run
+	# mode still print it, so --dry-run shows everything that would run.
+	local dry_run="$1"
+	if [[ "$dry_run" -eq 1 ]]; then
+		_flushdns_run_root "$@"
+	else
+		_flushdns_run_root "$@" >/dev/null 2>&1 || true
+	fi
+}
+
 _flushdns_run_root() {
 	# Usage: _flushdns_run_root <dry_run:0|1> <cmd...>
 	local dry_run="$1"
@@ -115,8 +127,8 @@ EOF
 
 		if _flushdns_has_cmd killall; then
 			# These may fail on some versions; treat as best-effort.
-			_flushdns_run_root "$dry_run" killall -HUP mDNSResponder >/dev/null 2>&1 || true
-			_flushdns_run_root "$dry_run" killall -HUP mDNSResponderHelper >/dev/null 2>&1 || true
+			_flushdns_run_root_quiet "$dry_run" killall -HUP mDNSResponder
+			_flushdns_run_root_quiet "$dry_run" killall -HUP mDNSResponderHelper
 			did=1
 		fi
 
@@ -168,7 +180,7 @@ EOF
 
 		# If nscd exists but isn't systemd-managed, invalidate hosts cache.
 		if _flushdns_has_cmd nscd; then
-			_flushdns_run_root "$dry_run" nscd -i hosts >/dev/null 2>&1 || true
+			_flushdns_run_root_quiet "$dry_run" nscd -i hosts
 		fi
 	fi
 

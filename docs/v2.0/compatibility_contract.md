@@ -85,7 +85,7 @@ For “core helpers” (currently: `sysinfo`, `netinfo`, `extract`, `flushdns`, 
 
 Used only when helpers are invoked (not on source):
 
-- `sysinfo`: `sw_vers`, `sysctl`, `vm_stat`, `top`, `diskutil` (all typically present), and optionally `numfmt` (usually not present unless coreutils installed).
+- `sysinfo`: `sw_vers`, `sysctl`, `vm_stat`, `top`, `netstat`, `route`, `diskutil` (all typically present), and optionally `numfmt` (usually not present unless coreutils installed; a built-in fallback produces the same output).
 - `netinfo`: `route`, `ipconfig`, `networksetup`, `ifconfig` (typically present). External IP lookup uses `curl` if present (macOS ships `curl`).
 - `extract`: `/usr/bin/tar` (bsdtar), `unzip` (usually present). `7z` / `unrar` may require Homebrew.
 - `flushdns`: varies by macOS version; implementation must remain best-effort and guarded.
@@ -130,8 +130,8 @@ Any of the following is a breaking change:
 
 - `.bash_profile` fails to source on macOS Bash 3.2 or on Linux Bash.
 - New network access, prompts, or noticeable latency during sourcing.
-- Renaming/removing a helper that existed without a clear deprecation/migration path.
-- Changing `--kv` keys or meaning without a deprecation window.
+- Renaming/removing a helper that existed without a migration note.
+- Changing `--kv` keys or meaning without a migration note.
 - Making install/uninstall destructive by default (overwriting dotfiles without backups/opt-in).
 
 ## Testing expectations
