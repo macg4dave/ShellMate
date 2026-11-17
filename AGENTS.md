@@ -7,7 +7,7 @@ rules here, not there.
 ## What ShellMate is
 
 ShellMate is a version-controlled **Bash** login profile for **macOS and Linux**:
-a small set of safe, opt-in helpers (`sysinfo`, `netinfo`, `extract`, `flushdns`,
+a small set of safe, opt-in helpers (`sysinfo`, `netinfo`, `extract`, `flushdns`, `motd`,
 `jd`/`jdir`, `pathinfo`, macOS-only `cdf`/`gosu`) loaded from `~/.bash_profile`.
 Priorities, in order: **never break the user's shell → portable → fast startup → features.**
 

@@ -186,4 +186,32 @@ X
   [[ "$utun" == "utun4" ]] || fail "macOS VPN detection should skip IPv6-only utuns: $utun"
 )
 
+# --- motd: welcome shows N times in interactive shells, then stops -------------
+
+motd_home="$tmp_home/motd-home"
+mkdir -p "$motd_home"
+motd_login() {
+  # Interactive shell (-i) without a tty; drop bash's job-control noise.
+  # shellcheck disable=SC2016  # expanded by the inner shell, on purpose
+  env -i HOME="$motd_home" PATH="$PATH" TERM=dumb "$@" \
+    bash --noprofile --norc -i -c 'source "$1/.bash_profile"; eval "${2:-:}"' _ "$repo_root" "${MOTD_CMD:-}" 2>&1 \
+    | grep -vE 'job control|terminal process group' || true
+}
+for n in 1 2 3; do
+  motd_login | grep -q "shows $n of 3" || fail "motd welcome missing on interactive shell $n"
+done
+[[ -z "$(motd_login)" ]] || fail "motd welcome still shown after 3 shells"
+# shellcheck disable=SC2016  # expanded by the inner shell, on purpose
+[[ -z "$(env -i HOME="$motd_home/fresh" PATH="$PATH" bash --noprofile --norc -c 'source "$1/.bash_profile"' _ "$repo_root" 2>&1)" ]] \
+  || fail "motd printed in a non-interactive shell"
+[[ -z "$(motd_login BASH_PROFILE_MOTD=0 HOME="$motd_home/env-off")" ]] || fail "BASH_PROFILE_MOTD=0 did not silence motd"
+
+mkdir -p "$motd_home/.config/my-mac-bash-profile"
+printf 'custom hello' > "$motd_home/.config/my-mac-bash-profile/motd"
+[[ "$(motd_login)" == "custom hello" ]] || fail "custom motd not shown at login"
+MOTD_CMD='motd --off' motd_login >/dev/null
+[[ -z "$(motd_login)" ]] || fail "motd --off did not stop the login message"
+MOTD_CMD='motd --on' motd_login >/dev/null
+[[ "$(motd_login)" == "custom hello" ]] || fail "motd --on did not bring the message back"
+
 echo "regressions: ok"

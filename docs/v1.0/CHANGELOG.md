@@ -6,6 +6,7 @@ This repo is a portable Bash login profile (macOS + Linux) with helper functions
 
 ## Unreleased
 
+- New `motd` module: the first 3 interactive shells show a welcome with basic usage; `motd --edit` sets your own login message, `motd --off`/`--on` toggles it
 - Fix: `extract foo.zip` now actually extracts (it used to only list the archive)
 - Fix: `extract <archive> <dest>` honours `dest`; output is quiet unless `-v`; zip/7z/rar and single-file formats no longer overwrite existing files without `--force`; `.Z` files work (falls back to `gzip`); `--list` and unsupported formats no longer create a directory
 - Fix: `extract` path-traversal check now works for 7z archives

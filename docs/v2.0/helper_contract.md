@@ -96,6 +96,7 @@ This table summarizes each helper’s CLI surface, current differences, and how 
 | `extract` | `-h`, `--help`, `-v`, `--verbose`, `-l`, `--list`, `-f`, `--force` | `0`, `1`, `2` | Refuses path traversal unless `--force`, prints `N/A`-style warnings when tools are missing | `extract` is human-only, so the CLI contract focuses on return codes and safety. |
 | `flushdns` | `-h`, `--help`, `--dry-run`, `--restart`, `--status` | `0`, `1`, `2` | If no DNS service is found the helper prints a friendly message and exits `1` | Fast distributions guard ensures no prompts; tests rely on `--help` stability. |
 | `jd` / `jdir` | `-h`, `--help`, `--dry-run`, `--recursive` (jdir via default); any other flag before the URL is unknown (`wget` flags go after the URL) | `0`, `1`, `2`, `127` when `wget` missing | When `wget` missing they exit `127` (in line with shell conventions) | They simply wrap `wget`, so contract enforcement is limited to help text + exit codes. |
+| `motd` | `-h`, `--help`, `--edit`, `--off`, `--on` | `0`, `1`, `2` | n/a (human-only) | Auto-shows only in interactive shells, on stderr; its only write is a counter/flag under `${XDG_STATE_HOME:-~/.local/state}/my-mac-bash-profile/`. |
 | `pathinfo` | `-h`, `--help`, `--duplicates`, `--missing` | `0`, `2` | Empty PATH entries (current directory) are listed, including a trailing `:` | Human-only; covered by the shared `--help` / unknown-flag checks. |
 
 ## Testing expectations

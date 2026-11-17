@@ -33,7 +33,7 @@ mm_bash_profile_doctor() {
 
     # Surface check: are the main helpers defined?
     local fn
-    for fn in sysinfo netinfo extract flushdns jd jdir; do
+    for fn in sysinfo netinfo extract flushdns jd jdir pathinfo motd; do
         if declare -F "$fn" >/dev/null 2>&1; then
             echo "helper_${fn}=present"
         else

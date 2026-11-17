@@ -48,6 +48,7 @@ Two environment variables control module loading:
 
 - `BASH_PROFILE_MODULES_ENABLE` (allowlist)
 - `BASH_PROFILE_MODULES_DISABLE` (denylist)
+- `BASH_PROFILE_MOTD=0` (no login message) and `BASH_PROFILE_MOTD_TIMES` (how many shells show the welcome; default 3). `motd --off` / `--on` does the same persistently.
 
 Rules:
 

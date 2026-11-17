@@ -113,6 +113,19 @@ If a command exists, it’s ready to use. If it doesn’t, nothing breaks.
 | `jd <url>`   | Resume‑safe file download                |
 | `jdir <url>` | Download a full directory                |
 | `pathinfo`   | Inspect PATH entries (dups/missing)      |
+| `motd`       | Show or change your login message        |
+
+### Login message (motd)
+
+Your first 3 new terminals show a short welcome with the commands above; after that it stops by itself.
+
+```bash
+motd           # show it again any time
+motd --edit    # write your own message, shown every time a terminal opens
+motd --off     # no message at login (motd --on brings it back)
+```
+
+Your message lives in `~/.config/my-mac-bash-profile/motd` (plain text). Delete that file to go back to the welcome.
 
 macOS‑only extras:
 

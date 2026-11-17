@@ -23,7 +23,7 @@ ln -sf "$repo_root/.bash_profile" "$HOME/.bash_profile"
 # shellcheck source=/dev/null
 source "$HOME/.bash_profile"
 
-helpers=(sysinfo netinfo extract flushdns jd jdir pathinfo)
+helpers=(sysinfo netinfo extract flushdns jd jdir pathinfo motd)
 for helper in "${helpers[@]}"; do
   "$helper" --help >/dev/null
 done
