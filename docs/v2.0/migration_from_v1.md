@@ -56,6 +56,7 @@ This is the preferred v2 method for per-machine tweaks.
 - `--dry-run` (prints changes without writing)
 - safe backups by default
 - install into `~/.my-mac-bash-profile` (copy) or `--link-repo` (symlink to checkout)
+- asks before installing recommended tools with the system package manager (since 3.1; `--bootstrap auto` installs without asking, `--bootstrap none` skips it)
 
 ## Upgrade steps
 

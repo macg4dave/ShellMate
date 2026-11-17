@@ -297,4 +297,39 @@ rm -f "$guard_local"
   rmdir "$msg"
 )
 
+# --- linux/WSL: Windows drives don't list every file as a program ---------------
+# Uses a fake mount table, so it runs on any Linux with GNU ls.
+if [[ "${IS_LINUX:-false}" == "true" ]] && command ls --version 2>/dev/null | grep -q 'GNU coreutils'; then
+  (
+    # shellcheck source=/dev/null
+    source "$repo_root/profile.d/linux.sh"
+    drive="$tmp_home/drive" meta="$tmp_home/meta" native="$tmp_home/native"
+    mkdir -p "$drive" "$meta" "$native"
+    for d in "$drive" "$meta" "$native"; do
+      : > "$d/prog"
+      chmod +x "$d/prog"
+    done
+    _linux_wsl_mounts_file="$tmp_home/mounts"
+    {
+      printf 'rootfs / ext4 rw 0 0\n'
+      printf 'C:\\134 %s 9p rw,noatime,aname=drvfs;path=C:\\;uid=1000;gid=1000 0 0\n' "$drive"
+      printf 'D:\\134 %s 9p rw,aname=drvfs;path=D:\\;metadata;uid=1000 0 0\n' "$meta"
+    } > "$_linux_wsl_mounts_file"
+
+    _linux_wsl_on_plain_mount "$drive/sub" || fail "linux: drvfs mount without metadata not detected"
+    ! _linux_wsl_on_plain_mount "$meta" || fail "linux: drvfs mount with metadata treated as plain"
+    ! _linux_wsl_on_plain_mount "$native" || fail "linux: native dir treated as a Windows drive"
+    ! _linux_wsl_on_plain_mount "${drive}2" || fail "linux: mount prefix matched a sibling dir"
+
+    out="$(_linux_wsl_ls "$drive")"
+    [[ "$out" == *" prog"* && "$out" != *"prog*"* ]] || fail "linux: Windows drive listing still marks files with *: $out"
+    out="$(LS_COLORS='' _linux_wsl_ls --color=always "$drive")"
+    [[ "$out" != *$'\033[01;32mprog'* ]] || fail "linux: Windows drive listing still colours files as programs"
+    out="$(_linux_wsl_ls "$native")"
+    [[ "$out" == *"prog*"* ]] || fail "linux: native listing lost the * marker: $out"
+    out="$(cd "$drive" && _linux_wsl_ls)"
+    [[ "$out" != *"prog*"* ]] || fail "linux: listing \$PWD on a Windows drive still marks files with *"
+  ) || exit 1
+fi
+
 echo "regressions: ok"

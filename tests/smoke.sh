@@ -117,8 +117,9 @@ tmpdir="$(mktemp -d)"
 
 install_target="$tmpdir/bash_profile"
 install_out="$(bash "$repo_root/scripts/install.sh" --repo "$repo_root" --target "$install_target" --dry-run)"
-echo "$install_out" | grep -q 'Installing symlink:' || { echo "install.sh --dry-run missing 'Installing symlink'" >&2; exit 1; }
-echo "$install_out" | grep -q '^ln -s ' || { echo "install.sh --dry-run did not print ln -s" >&2; exit 1; }
+echo "$install_out" | grep -q 'Would link ' || { echo "install.sh --dry-run missing 'Would link'" >&2; exit 1; }
+echo "$install_out" | grep -q '\$ ln -s ' || { echo "install.sh --dry-run did not print ln -s" >&2; exit 1; }
+echo "$install_out" | grep -q 'Dry run finished' || { echo "install.sh --dry-run missing summary" >&2; exit 1; }
 if [[ -e "$install_target" || -L "$install_target" ]]; then
   echo "install.sh --dry-run modified filesystem: $install_target exists" >&2
   exit 1
@@ -159,28 +160,38 @@ bash "$repo_root/scripts/install.sh" --help >/dev/null
 bash "$repo_root/scripts/bootstrap-linux.sh" --help >/dev/null
 bash "$repo_root/scripts/bootstrap-macos.sh" --help >/dev/null
 
-# Ensure bootstrap-linux dry-run prints expected commands (without executing).
+# Ensure the bootstrap scripts list and dry-run the right packages (without
+# executing). PATH holds only stubs, so every tool counts as missing and the
+# result doesn't depend on what this machine has installed.
 stub_bin="$tmp_home/stub-bin"
 mkdir -p "$stub_bin"
-cat >"$stub_bin/apt-get" <<'EOF'
-#!/usr/bin/env bash
-exit 0
-EOF
+printf '#!/bin/sh\nexit 0\n' >"$stub_bin/apt-get"
 chmod +x "$stub_bin/apt-get"
 
-bootstrap_linux_out="$(PATH="$stub_bin:$PATH" bash "$repo_root/scripts/bootstrap-linux.sh" --dry-run)"
-echo "$bootstrap_linux_out" | grep -q '^sudo apt-get update$' || { echo "bootstrap-linux --dry-run missing apt-get update" >&2; exit 1; }
-echo "$bootstrap_linux_out" | grep -q '^sudo apt-get install -y ' || { echo "bootstrap-linux --dry-run missing apt-get install" >&2; exit 1; }
+bootstrap_linux_list="$(PATH="$stub_bin" "$BASH" "$repo_root/scripts/bootstrap-linux.sh" --list)"
+echo "$bootstrap_linux_list" | grep -q '^manager=apt$' || { echo "bootstrap-linux --list missing manager=apt" >&2; exit 1; }
+echo "$bootstrap_linux_list" | grep -q '^core=.*curl' || { echo "bootstrap-linux --list missing core packages" >&2; exit 1; }
+echo "$bootstrap_linux_list" | grep -q '^optional=.*p7zip-full' || { echo "bootstrap-linux --list missing optional packages" >&2; exit 1; }
 
-bootstrap_linux_full_out="$(PATH="$stub_bin:$PATH" bash "$repo_root/scripts/bootstrap-linux.sh" --dry-run --full)"
+bootstrap_linux_out="$(PATH="$stub_bin" "$BASH" "$repo_root/scripts/bootstrap-linux.sh" --dry-run)"
+echo "$bootstrap_linux_out" | grep -q '\$ sudo apt-get update' || { echo "bootstrap-linux --dry-run missing apt-get update" >&2; exit 1; }
+echo "$bootstrap_linux_out" | grep -q '\$ sudo apt-get install -y ' || { echo "bootstrap-linux --dry-run missing apt-get install" >&2; exit 1; }
+if echo "$bootstrap_linux_out" | grep -q 'p7zip'; then
+  echo "bootstrap-linux --dry-run installs optional packages without --full" >&2; exit 1
+fi
+
+bootstrap_linux_full_out="$(PATH="$stub_bin" "$BASH" "$repo_root/scripts/bootstrap-linux.sh" --dry-run --full)"
 echo "$bootstrap_linux_full_out" | grep -q 'p7zip' || { echo "bootstrap-linux --full --dry-run missing optional packages" >&2; exit 1; }
 
-# If we are on macOS with Homebrew, ensure bootstrap-macos dry-run prints commands.
-if [[ "$(uname -s 2>/dev/null)" == "Darwin" ]] && command -v brew >/dev/null 2>&1; then
-  bootstrap_macos_out="$(bash "$repo_root/scripts/bootstrap-macos.sh" --dry-run)"
-  echo "$bootstrap_macos_out" | grep -q '^brew update$' || { echo "bootstrap-macos --dry-run missing brew update" >&2; exit 1; }
-  echo "$bootstrap_macos_out" | grep -q '^brew install ' || { echo "bootstrap-macos --dry-run missing brew install" >&2; exit 1; }
-fi
+# bootstrap-macos, with stubbed uname (Darwin) and brew so it runs on any OS.
+mac_stub="$tmp_home/stub-mac"
+mkdir -p "$mac_stub"
+printf '#!/bin/sh\necho Darwin\n' >"$mac_stub/uname"
+printf '#!/bin/sh\nexit 0\n' >"$mac_stub/brew"
+chmod +x "$mac_stub/uname" "$mac_stub/brew"
+bootstrap_macos_out="$(PATH="$mac_stub" "$BASH" "$repo_root/scripts/bootstrap-macos.sh" --dry-run)"
+echo "$bootstrap_macos_out" | grep -q '\$ brew update' || { echo "bootstrap-macos --dry-run missing brew update" >&2; exit 1; }
+echo "$bootstrap_macos_out" | grep -q '\$ brew install ' || { echo "bootstrap-macos --dry-run missing brew install" >&2; exit 1; }
 
 # Verify module toggling works (in a clean subshell).
 (

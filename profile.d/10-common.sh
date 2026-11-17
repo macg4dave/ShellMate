@@ -51,8 +51,11 @@ if [[ $- == *i* ]]; then
     if [[ "${BASH_PROFILE_CD_LS:-1}" != "0" ]]; then
         cd() {
             builtin cd "$@" || return
-            # Colorize output when supported.
-            if ${IS_MAC:-false}; then
+            # Colorize output when supported. A module can set __BP_LS_FUNC
+            # to a listing function (linux.sh does on WSL).
+            if [[ -n "${__BP_LS_FUNC:-}" ]] && declare -F "$__BP_LS_FUNC" >/dev/null 2>&1; then
+                "$__BP_LS_FUNC"
+            elif ${IS_MAC:-false}; then
                 command ls -GFhla
             else
                 command ls --color=auto -Fhla

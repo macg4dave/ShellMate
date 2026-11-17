@@ -42,7 +42,7 @@ Optional (deploy a copy into your home directory):
 
 - `--install-dir <path>` copies the runtime files (`.bash_profile`, `profile.d/`, `scripts/`) into a directory you choose, then symlinks `~/.bash_profile` to that installed copy.
   - This is useful if you don’t want to keep the git checkout around permanently.
-  - Conservative by default: if the install dir already exists, the installer leaves it in place. Use `--force` to redeploy (and it will create a backup unless you pass `--no-backup`).
+  - If the install dir already exists, the installer asks before updating it (a backup is kept unless you pass `--no-backup`). Without a terminal it leaves it in place unless you pass `--yes`.
 
 Example:
 
@@ -51,8 +51,9 @@ Example:
 
 Optional:
 
-- `--bootstrap auto` runs `scripts/bootstrap-linux.sh` or `scripts/bootstrap-macos.sh` after installing.
-- `--full` can be combined with Linux bootstrapping to request optional packages.
+- By default (`--bootstrap ask`) the installer lists the recommended tools that are missing and asks before installing them with the system package manager (apt, dnf, yum, pacman, zypper, apk or Homebrew). It skips this without a terminal, or with `--yes`.
+- `--bootstrap auto` installs them without asking; `--bootstrap none` skips the step.
+- `--full` also includes optional extras (7-Zip, unrar, wireless-tools, iproute2).
 
 ### Notes for terminal setup
 
@@ -206,5 +207,4 @@ Run ShellCheck across the profile and scripts:
 
 Best-effort dependency installers live in `scripts/`:
 
-- `scripts/bootstrap-linux.sh` (supports `--full` and `--dry-run`)
-- `scripts/bootstrap-macos.sh` (supports `--dry-run`)
+- `scripts/bootstrap-linux.sh` and `scripts/bootstrap-macos.sh`: install only the tools that are missing. Both support `--full` (optional extras), `--list` (print the package manager and missing packages; the installer uses this) and `--dry-run`.

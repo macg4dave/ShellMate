@@ -5,7 +5,7 @@
 #
 # Options after `bash -s --` are passed to scripts/install.sh, e.g.:
 #   ... | bash -s -- --yes                  # don't ask before replacing ~/.bash_profile
-#   ... | bash -s -- --bootstrap auto       # also install optional tools (uses sudo/brew)
+#   ... | bash -s -- --bootstrap none       # don't offer to install recommended tools
 #   ... | bash -s -- --dry-run              # show what would change
 #
 # Environment:
@@ -13,7 +13,8 @@
 #
 # What it does: downloads the release tarball + SHA256SUMS over HTTPS, checks
 # the checksum, unpacks to a temp dir and runs the bundled scripts/install.sh
-# (which backs up anything it replaces). Nothing is installed system-wide.
+# (which backs up anything it replaces). System packages are only installed if
+# you say yes when the installer asks.
 
 # Everything lives in main(), called on the last line, so a partially
 # downloaded script can never run half-way.
@@ -22,8 +23,13 @@ set -euo pipefail
 
 SHELLMATE_REPO="macg4dave/ShellMate"
 
-_say() { printf 'shellmate-install: %s\n' "$*"; }
-_die() { printf 'shellmate-install: error: %s\n' "$*" >&2; exit 1; }
+case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
+  *[Uu][Tt][Ff]-8*|*[Uu][Tt][Ff]8*) _s_step='•' _s_ok='✓' _s_err='✗' ;;
+  *) _s_step='-' _s_ok='+' _s_err='x' ;;
+esac
+_say() { printf '  %s %s\n' "$_s_step" "$*"; }
+_ok()  { printf '  %s %s\n' "$_s_ok" "$*"; }
+_die() { printf '  %s shellmate-install: %s\n' "$_s_err" "$*" >&2; exit 1; }
 _has() { command -v "$1" >/dev/null 2>&1; }
 
 # Usage: _fetch <url> <dest-file>
@@ -81,7 +87,8 @@ main() {
   # shellcheck disable=SC2064  # expand $tmp now, on purpose
   trap "rm -rf '$tmp'" EXIT
 
-  _say "downloading ShellMate ${version}"
+  printf '\n'
+  _say "Downloading ShellMate ${version}"
   _fetch "$base/${name}.tar.gz" "$tmp/${name}.tar.gz" || _die "download failed: $base/${name}.tar.gz"
   _fetch "$base/SHA256SUMS" "$tmp/SHA256SUMS" || _die "download failed: $base/SHA256SUMS"
 
@@ -90,30 +97,25 @@ main() {
   [[ -n "$want" ]] || _die "SHA256SUMS has no entry for ${name}.tar.gz"
   if got="$(_sha256 "$tmp/${name}.tar.gz")"; then
     [[ "$got" == "$want" ]] || _die "checksum mismatch for ${name}.tar.gz (expected $want, got $got)"
-    _say "checksum ok"
+    _ok "Checksum verified"
   else
-    _say "warning: no sha256sum/shasum found; skipping checksum check" >&2
+    _say "No sha256sum/shasum found; skipping the checksum check" >&2
   fi
 
   tar -xzf "$tmp/${name}.tar.gz" -C "$tmp"
   [[ -f "$tmp/$name/scripts/install.sh" ]] || _die "release archive is missing scripts/install.sh"
 
-  # Optional dependency installs use sudo/brew; only when asked for.
-  local args=("$@") has_bootstrap=0 a
-  for a in ${args[@]+"${args[@]}"}; do
-    [[ "$a" == "--bootstrap" ]] && has_bootstrap=1
-  done
-  [[ "$has_bootstrap" -eq 1 ]] || args+=(--bootstrap none)
+  # The installer asks before installing recommended tools (sudo/brew), and
+  # skips them when there's no terminal to ask or --yes is given.
+  local args=("$@")
 
   # When piped (`curl | bash`) stdin is this script, so let the installer ask
   # its questions on the terminal instead.
   if [[ ! -t 0 ]] && (exec </dev/tty) 2>/dev/null; then
-    bash "$tmp/$name/scripts/install.sh" --repo "$tmp/$name" "${args[@]}" </dev/tty
+    bash "$tmp/$name/scripts/install.sh" --repo "$tmp/$name" ${args[@]+"${args[@]}"} </dev/tty
   else
-    bash "$tmp/$name/scripts/install.sh" --repo "$tmp/$name" "${args[@]}"
+    bash "$tmp/$name/scripts/install.sh" --repo "$tmp/$name" ${args[@]+"${args[@]}"}
   fi
-
-  _say "done. Open a new terminal (or run: source ~/.bash_profile) to start using ShellMate ${version}."
 }
 
 main "$@"

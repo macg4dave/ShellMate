@@ -85,7 +85,9 @@ What the installer does:
 * Copies the profile into `~/.my-mac-bash-profile`
 * Links your `~/.bash_profile` to it
 * Sets things up so it works on macOS *and* Linux
-* Does **not** modify system files
+* Offers to install a few recommended tools (like `curl` and `wget`) with
+  your package manager: apt, dnf or Homebrew. It shows you what's missing
+  and **asks first**. Say no and ShellMate still works; you can add them later.
 
 Nothing destructive. Nothing hidden.
 
@@ -191,6 +193,22 @@ BASH_PROFILE_SAFE_MODE=1 bash -l     # or: bash --noprofile --norc
 ```
 
 Open a new terminal to confirm everything works.
+
+### `ls` colours on WSL
+
+On WSL, Windows drives (`/mnt/c`, …) show every file as `rwxrwxrwx`, so plain
+`ls` would colour every file as a program and add a `*` after it. ShellMate
+handles this for you: on those drives, folders show in normal blue and files
+show plain, the same as on a regular Linux machine.
+
+Optional: if you want real Linux permissions on Windows drives (so `chmod`
+works there), put this in `/etc/wsl.conf`, then run `wsl --shutdown` from
+Windows. ShellMate notices and goes back to normal `ls` colours on those drives.
+
+```ini
+[automount]
+options = "metadata,umask=022,fmask=111"
+```
 
 ---
 
@@ -302,12 +320,16 @@ echo "Local IP: $local_ip"
 
 ## Bootstrap scripts
 
-Optional helpers for installing dependencies:
+The installer runs these for you (after asking). To run them yourself:
 
-* `scripts/bootstrap-linux.sh`
-* `scripts/bootstrap-macos.sh`
+* `scripts/bootstrap-linux.sh` (apt, dnf, yum, pacman, zypper or apk)
+* `scripts/bootstrap-macos.sh` (Homebrew)
 
-Both support `--dry-run`.
+They only install tools that are missing. Options: `--full` (optional extras),
+`--list` (show what's missing) and `--dry-run` (show the commands only).
+
+Installer options: `--bootstrap none` skips the question, `--bootstrap auto`
+installs without asking.
 
 ---
 

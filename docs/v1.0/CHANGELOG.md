@@ -6,7 +6,23 @@ This repo is a portable Bash login profile (macOS + Linux) with helper functions
 
 ## Unreleased
 
+## 3.1.0 — 2026-11-17
+
+### Upgrading from 3.0
+
+Re-run the installer (or the one-line install). Nothing changes for everyday
+use. If you script the installer, note that it now **asks** before installing
+system packages: they are skipped without a terminal or with `--yes`. Use
+`--bootstrap auto` to install them without asking (what 3.0 did by default), or
+`--bootstrap none` to skip the question.
+
+### Changes
+
 - Removed the GitHub CI test workflow; tests run locally (`make test`, `make docker-test`, or automatically before each commit via `make hooks`). Pushing a `v*` tag still publishes a release.
+- WSL: `ls` on Windows drives (`/mnt/c`, …) now looks like it does on a normal Linux machine: folders are no longer blue on green, and files are no longer all bold green with a `*`. Drives mounted with the `metadata` option, and the Linux filesystem, are listed as before. Your own `ow=`/`tw=` entries in `LS_COLORS` are left alone.
+- Installer: cleaner output (colour when the terminal supports it, one ✓ line per step, `~` paths) and a clear summary at the end.
+- Installer: now **asks** before installing recommended tools with apt/dnf/yum/pacman/zypper/apk/Homebrew, and lists exactly which ones are missing first. Optional extras get their own question (default no). This replaces running the bootstrap without asking. Skipped when there's no terminal or with `--yes`; `--bootstrap auto` installs without asking, as before. The online installer asks too, instead of always skipping.
+- Bootstrap scripts install only missing tools, add `--list`, and `bootstrap-macos.sh` gains `--full`. On Linux, optional extras a distro doesn't package (e.g. `unrar`) are skipped instead of failing the whole install.
 
 ## 3.0.0 — 2026-11-17
 
