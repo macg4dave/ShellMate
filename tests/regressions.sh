@@ -53,6 +53,8 @@ rc=0
 extract t.tar.gz quiet >/dev/null 2>&1 || rc=$?
 [[ "$rc" -eq 1 ]] || fail "extract over existing files exited $rc, expected 1"
 [[ "$(cat quiet/sub/a.txt)" == changed ]] || fail "extract overwrote a file without --force"
+extract --force t.tar.gz quiet >/dev/null || fail "extract --force t.tar.gz failed"
+[[ "$(cat quiet/sub/a.txt)" == original ]] || fail "extract --force t.tar.gz did not overwrite"
 
 # --list and unsupported formats must not create directories.
 extract --list t.tar.gz >/dev/null || fail "extract --list failed"
@@ -73,7 +75,9 @@ if has_cmd zip && has_cmd unzip; then
   [[ "$(cat t/sub/a.txt 2>/dev/null)" == original ]] || fail "extract t.zip did not extract"
 
   echo changed > t/sub/a.txt
-  extract t.zip >/dev/null 2>&1 || true
+  rc=0
+  extract t.zip >/dev/null 2>&1 || rc=$?
+  [[ "$rc" -eq 1 ]] || fail "extract t.zip over existing files exited $rc, expected 1"
   [[ "$(cat t/sub/a.txt)" == changed ]] || fail "extract t.zip overwrote without --force"
   extract --force t.zip >/dev/null || fail "extract --force t.zip failed"
   [[ "$(cat t/sub/a.txt)" == original ]] || fail "extract --force t.zip did not overwrite"
@@ -226,18 +230,22 @@ MOTD_CMD='motd --off' motd_login >/dev/null
 MOTD_CMD='motd --on' motd_login >/dev/null
 [[ "$(motd_login)" == "custom hello" ]] || fail "motd --on did not bring the message back"
 
-# Box layout: every line the same width; art only when there is room; no
-# colour codes when not writing to a terminal.
+# Box layout: every line the same width; title left-aligned; descriptions
+# beside the command when there is room, below it when not; no colour codes
+# when not writing to a terminal.
 (
   # shellcheck source=/dev/null
   source "$repo_root/profile.d/motd.sh"
   wide="$(COLUMNS=80 TERM=xterm LC_ALL=C motd)"
-  [[ "$wide" == *"<___/\___>"* ]] || fail "motd box is missing the seashell art at 80 columns"
   [[ "$wide" != *$'\033'* ]] || fail "motd printed colour codes to a non-terminal"
-  widths="$(printf '%s\n' "$wide" | awk '{print length($0)}' | sort -u | tr -d '[:space:]')"
-  [[ "$widths" == 72 ]] || fail "motd box lines have uneven widths: $widths"
+  [[ "$(printf '%s\n' "$wide" | sed -n 2p)" == "| Welcome to ShellMate "* ]] || fail "motd title is not left-aligned"
+  [[ "$wide" == *"| sysinfo         OS, uptime"* ]] || fail "motd at 80 columns should put descriptions beside commands"
+  widths="$(printf '%s\n' "$wide" | awk '{print length($0)}' | sort -u)"
+  [[ "$widths" =~ ^[0-9]+$ && "$widths" -le 80 ]] || fail "motd box lines have uneven widths or overflow 80 columns: $widths"
   narrow="$(COLUMNS=50 TERM=xterm LC_ALL=C motd)"
-  [[ "$narrow" != *"<___/"* && "$narrow" == "+---"*"Welcome to ShellMate"* ]] || fail "motd at 50 columns should be a box without art"
+  [[ "$narrow" == "+---"*"| sysinfo "*"|    OS, uptime"* ]] || fail "motd at 50 columns should stack descriptions under commands"
+  widths="$(printf '%s\n' "$narrow" | awk '{print length($0)}' | sort -u)"
+  [[ "$widths" == 50 ]] || fail "motd at 50 columns has uneven widths: $widths"
   [[ "$(COLUMNS=30 TERM=xterm motd | head -n 1)" == "Welcome to ShellMate"* ]] || fail "motd at 30 columns should be plain"
 )
 

@@ -8,7 +8,8 @@ This repo is a portable Bash login profile (macOS + Linux) with helper functions
 
 - Startup can't be killed by a mistake in a module or `local.sh`: `exit`/`logout` and `set -e` there are ignored with a warning; `BASH_PROFILE_SAFE_MODE=1` skips modules and overrides for recovery
 - `motd`: your message is cleaned before display (escape codes, `\r`, tabs) and capped (40 lines, 200 chars per line), so a bad paste can't garble the terminal or slow logins
-- New `motd` module: the first 3 interactive shells show a colourful boxed welcome (with a seashell) and basic usage; `motd --edit` sets your own login message (`#` lines are notes; the starter file explains how to turn it off and shows nothing until you write something), `motd --off`/`--on` toggles it
+- New `motd` module: the first 3 interactive shells show a colourful boxed welcome listing each command with a short description (rows striped like `sysinfo --box`); `motd --edit` sets your own login message (`#` lines are notes; the starter file explains how to turn it off and shows nothing until you write something), `motd --off`/`--on` toggles it
+- Fix: `extract` without `--force` now stops with an error (exit 1) when files already exist in the destination, instead of silently skipping them and reporting success (macOS tar, zip, 7z, rar)
 - Fix: `extract foo.zip` now actually extracts (it used to only list the archive)
 - Fix: `extract <archive> <dest>` honours `dest`; output is quiet unless `-v`; zip/7z/rar and single-file formats no longer overwrite existing files without `--force`; `.Z` files work (falls back to `gzip`); `--list` and unsupported formats no longer create a directory
 - Fix: `extract` path-traversal check now works for 7z archives

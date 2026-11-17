@@ -91,43 +91,21 @@ EOF
 # `tput`, so showing a message at login starts no extra processes.
 #------------------------------------------------------------------------------
 
-# Seashell (a scallop on calm water). Loaded at render time from a quoted
-# heredoc so the art stays readable and nothing is parsed by the shell.
-_motd_load_art() {
-    _MOTD_ART=()
-    local line
-    while IFS= read -r line; do
-        _MOTD_ART+=("$line")
-    done <<'ART'
-         _.-~~~~~~-._
-     .-'/  /  ||  \  \'-.
-   .'  /  /   ||   \  \  '.
-  /   /  /    ||    \  \   \
-  \   \  \    ||    /  /   /
-   '.  \  \   ||   /  /  .'
-     '-.\  \  ||  /  /.-'
-        '-._\_||_/_.-'
-          <___/\___>
- ~ ~~~  ~~ ~  ~~~ ~~  ~ ~~
-ART
-}
-_MOTD_ART_W=28
-
 # command|how to call it|what it does
 _MOTD_CMDS=(
-'sysinfo||system at a glance'
-'netinfo||network and IPs'
-'extract|<file>|unpack any archive'
-'pathinfo||tidy up your PATH'
-'flushdns||clear the DNS cache'
-'jd|<url>|resumable download'
+'sysinfo||OS, uptime, CPU load, memory, disk and network totals'
+'netinfo||Hostname, local and public IP, gateway and VPN status'
+'extract|<file>|Unpack tar, zip, 7z, rar, gz and more into a folder'
+'pathinfo||List your PATH and flag duplicate or missing folders'
+'flushdns||Clear the DNS cache when websites stop resolving'
+'jd|<url>|Download a file with wget, resuming if interrupted'
 )
+_MOTD_CMD_W=16   # width of the command column
 
 # Usage: _motd_style <fd>  -- sets colours + box characters for output on <fd>.
 _motd_style() {
     local fd="$1" level=0
-    _MOTD_R="" _MOTD_BORDER="" _MOTD_WAVE="" _MOTD_WAVE2=""
-    _MOTD_SHELL1="" _MOTD_SHELL2="" _MOTD_SHELL3="" _MOTD_EARS=""
+    _MOTD_R="" _MOTD_BORDER="" _MOTD_BG="" _MOTD_BG1="" _MOTD_BG2=""
     _MOTD_HEAD="" _MOTD_TAG="" _MOTD_CMD="" _MOTD_ARG="" _MOTD_DESC="" _MOTD_MUTED=""
 
     if [[ -t "$fd" && -z "${NO_COLOR:-}" ]]; then
@@ -143,12 +121,8 @@ _motd_style() {
     if [[ "$level" -eq 256 ]]; then
         _MOTD_R="${e}0m"
         _MOTD_BORDER="${e}38;5;67m"     # steel blue
-        _MOTD_SHELL1="${e}38;5;224m"    # shell: pale peach at the rim ...
-        _MOTD_SHELL2="${e}38;5;217m"    # ... soft pink ...
-        _MOTD_SHELL3="${e}38;5;210m"    # ... coral toward the hinge
-        _MOTD_EARS="${e}38;5;180m"      # sand
-        _MOTD_WAVE="${e}38;5;74m"       # sea
-        _MOTD_WAVE2="${e}38;5;110m"     # lighter sea
+        _MOTD_BG1="${e}48;5;236m"       # command rows alternate between two
+        _MOTD_BG2="${e}48;5;235m"       # dark greys, like sysinfo --box
         _MOTD_HEAD="${e}1;38;5;220m"    # yellow: title
         _MOTD_TAG="${e}38;5;75m"        # blue: tagline
         _MOTD_CMD="${e}1;38;5;221m"     # yellow: anything you type
@@ -158,12 +132,7 @@ _motd_style() {
     elif [[ "$level" -eq 8 ]]; then
         _MOTD_R="${e}0m"
         _MOTD_BORDER="${e}34m"
-        _MOTD_SHELL1="${e}33m"
-        _MOTD_SHELL2="${e}33m"
-        _MOTD_SHELL3="${e}31m"
-        _MOTD_EARS="${e}33m"
-        _MOTD_WAVE="${e}34m"
-        _MOTD_WAVE2="${e}36m"
+        # No row stripes: 8 colours has no grey subtle enough to read on.
         _MOTD_HEAD="${e}1;33m"
         _MOTD_TAG="${e}94m"
         _MOTD_CMD="${e}1;33m"
@@ -196,15 +165,20 @@ _motd_rep() {
 }
 
 # Line builder: append coloured text while tracking its visible width.
+# Everything appended (padding too) gets the current row background $_MOTD_BG.
 _motd_seg() {
-    _MOTD_LINE+="$1$2${1:+$_MOTD_R}"
+    if [[ -n "$1$_MOTD_BG" ]]; then
+        _MOTD_LINE+="$_MOTD_BG$1$2$_MOTD_R"
+    else
+        _MOTD_LINE+="$2"
+    fi
     _MOTD_LEN=$((_MOTD_LEN + ${#2}))
 }
 _motd_pad_to() {
-    while [[ "$_MOTD_LEN" -lt "$1" ]]; do
-        _MOTD_LINE+=" "
-        _MOTD_LEN=$((_MOTD_LEN + 1))
-    done
+    [[ "$_MOTD_LEN" -lt "$1" ]] || return 0
+    local pad="" i
+    for ((i = _MOTD_LEN; i < $1; i++)); do pad+=" "; done   # no subshell: runs at login
+    _motd_seg "" "$pad"
 }
 # Usage: _motd_emit <inner_width>  -- print the built line inside the box.
 _motd_emit() {
@@ -215,122 +189,124 @@ _motd_emit() {
 _motd_top() {
     _motd_rule "$_MOTD_TL" "$1" "$_MOTD_TR"
 }
-# Usage: _motd_center <inner_width> <colour> <text>  -- one centred box row.
-_motd_center() {
-    _motd_pad_to $((($1 - ${#3}) / 2))
-    _motd_seg "$2" "$3"
-    _motd_emit "$1"
-}
 # Usage: _motd_title_box <inner_width>  -- "Welcome" + tagline in their own box.
 _motd_title_box() {
     _motd_top "$1"
-    _motd_center "$1" "$_MOTD_HEAD" "Welcome to ShellMate"
-    _motd_center "$1" "$_MOTD_TAG" "$_MOTD_TAGLINE"
+    _motd_seg "" " "
+    _motd_seg "$_MOTD_HEAD" "Welcome to ShellMate"
+    _motd_emit "$1"
+    _motd_seg "" " "
+    _motd_seg "$_MOTD_TAG" "$_MOTD_TAGLINE"
+    _motd_emit "$1"
     _motd_rule "$_MOTD_BL" "$1" "$_MOTD_BR"
 }
 _motd_rule() {
     printf '%s%s%s%s%s\n' "$_MOTD_BORDER" "$1" "$(_motd_rep "$_MOTD_H" "$2")" "$3" "$_MOTD_R"
 }
 
-# Shell art row <i>, shaded from the rim down to the hinge, then the sea.
-_motd_art_row() {
-    local i="$1" line="${_MOTD_ART[$1]}" last=$((${#_MOTD_ART[@]} - 1))
-    if [[ "$i" -eq "$last" ]]; then
-        # Alternate two blues per wave so the water has some movement.
-        local j ch colour
-        for ((j = 0; j < ${#line}; j++)); do
-            ch="${line:j:1}"
-            colour="$_MOTD_WAVE"
-            (( (j / 4) % 2 )) && colour="$_MOTD_WAVE2"
-            if [[ "$ch" == " " ]]; then
-                _motd_seg "" " "
-            else
-                _motd_seg "$colour" "$ch"
-            fi
-        done
-        return 0
-    fi
-    case "$i" in
-        0|1|2) _motd_seg "$_MOTD_SHELL1" "$line" ;;
-        3|4|5) _motd_seg "$_MOTD_SHELL2" "$line" ;;
-        $((last - 1))) _motd_seg "$_MOTD_EARS" "$line" ;;
-        *) _motd_seg "$_MOTD_SHELL3" "$line" ;;
-    esac
-}
-
 _MOTD_TAGLINE="It's your shell, Mate!"
+_MOTD_HELP_TXT=" to any command to see all of its options."
+_MOTD_EDIT_TXT="  write your own login message"
+_MOTD_OFF_TXT="  stop showing this at login"
 
-# Command row <i> (0-based) of the welcome; appends to the current line.
-_motd_welcome_text() {
-    local entry="${_MOTD_CMDS[$1]:-}"
-    [[ "$1" -ge 0 && -n "$entry" ]] || return 0
-    local cmd="${entry%%|*}" rest="${entry#*|}"
-    local arg="${rest%%|*}" desc="${rest#*|}"
-    local start="$_MOTD_LEN"
-    _motd_seg "$_MOTD_CMD" "$cmd"
-    [[ -n "$arg" ]] && _motd_seg "$_MOTD_ARG" " $arg"
-    _motd_pad_to $((start + 16))
-    _motd_seg "$_MOTD_DESC" "$desc"
+# Usage: _motd_wrap <width> <text>  -- word-wrap into _MOTD_WRAP (array).
+_motd_wrap() {
+    local width="$1" word line=""
+    _MOTD_WRAP=()
+    # Split on spaces on purpose; the text is ours and has no glob characters.
+    # shellcheck disable=SC2086
+    for word in $2; do
+        if [[ -z "$line" ]]; then
+            line="$word"
+        elif [[ $((${#line} + 1 + ${#word})) -le "$width" ]]; then
+            line+=" $word"
+        else
+            _MOTD_WRAP+=("$line")
+            line="$word"
+        fi
+    done
+    [[ -n "$line" ]] && _MOTD_WRAP+=("$line")
+    return 0
 }
 
 # Usage: _motd_welcome <fd> [shown_count]
 _motd_welcome() {
-    local fd="$1" shown="${2:-}" times cols i
+    local fd="$1" shown="${2:-}" times cols
     times="$(_motd_times)"
     _motd_style "$fd"
     cols="$(_motd_cols)"
-    _MOTD_LINE="" _MOTD_LEN=0
+    _MOTD_LINE="" _MOTD_LEN=0 _MOTD_BG=""
 
     local counter=""
     [[ -n "$shown" ]] && counter="$shown of $times"
 
-    if [[ "${TERM:-}" == "dumb" || "$cols" -lt 42 ]]; then
-        # Plain: no box, no art.
+    local entry cmd rest arg desc
+    if [[ "${TERM:-}" == "dumb" || "$cols" -lt 45 ]]; then   # narrowest box that fits the footer
+        # Plain: no box, no colour.
         printf 'Welcome to ShellMate - %s\n\n' "$_MOTD_TAGLINE"
-        local entry cmd rest arg
         for entry in "${_MOTD_CMDS[@]}"; do
             cmd="${entry%%|*}" rest="${entry#*|}"
             arg="${rest%%|*}"
             printf '  %-16s%s\n' "$cmd${arg:+ $arg}" "${rest#*|}"
         done
-        printf '\nAdd --help to any command for details.\n'
-        printf 'motd --edit: your own message   motd --off: turn this off%s\n' "${counter:+   ($counter)}"
+        printf '\nAdd --help%s\n' "$_MOTD_HELP_TXT"
+        printf 'motd --edit: write your own login message   motd --off: stop showing this at login%s\n' \
+            "${counter:+   ($counter)}"
         return 0
     fi
 
-    # Wide: art + text (needs 72 columns). Medium: text only. Below: plain.
-    local wide=0 inner=40
-    if [[ "$cols" -ge 72 ]]; then
-        wide=1
-        inner=70
+    # The box is as wide as the longest command row. When the terminal is
+    # narrower, each description goes on its own (wrapped) line instead.
+    local widest=0
+    for entry in "${_MOTD_CMDS[@]}"; do
+        rest="${entry#*|}" desc="${rest#*|}"
+        [[ "${#desc}" -gt "$widest" ]] && widest="${#desc}"
+    done
+    local inner=$((1 + _MOTD_CMD_W + widest + 2)) stacked=0
+    if [[ $((inner + 2)) -gt "$cols" ]]; then
+        stacked=1
+        inner=$((cols - 2))
     fi
-    local text_col=1
-    [[ "$wide" -eq 1 ]] && text_col=$((1 + _MOTD_ART_W + 3))
 
-    _motd_load_art
     _motd_title_box "$inner"
     _motd_top "$inner"
-    _motd_emit "$inner"
-    local rows=${#_MOTD_CMDS[@]} text_row offset=0
-    if [[ "$wide" -eq 1 ]]; then
-        rows=${#_MOTD_ART[@]}
-        offset=$(((rows - ${#_MOTD_CMDS[@]}) / 2))   # centre the commands on the shell
-    fi
-    for ((i = 0; i < rows; i++)); do
+    local i=0 line
+    for entry in "${_MOTD_CMDS[@]}"; do
+        cmd="${entry%%|*}" rest="${entry#*|}"
+        arg="${rest%%|*}" desc="${rest#*|}"
+        if (( i % 2 == 0 )); then _MOTD_BG="$_MOTD_BG1"; else _MOTD_BG="$_MOTD_BG2"; fi
         _motd_seg "" " "
-        [[ "$wide" -eq 1 ]] && _motd_art_row "$i"
-        text_row=$((i - offset))
-        _motd_pad_to "$text_col"
-        [[ "$text_row" -ge 0 ]] && _motd_welcome_text "$text_row"
-        _motd_emit "$inner"
+        _motd_seg "$_MOTD_CMD" "$cmd"
+        [[ -n "$arg" ]] && _motd_seg "$_MOTD_ARG" " $arg"
+        if [[ "$stacked" -eq 0 ]]; then
+            _motd_pad_to $((1 + _MOTD_CMD_W))
+            _motd_seg "$_MOTD_DESC" "$desc"
+            _motd_emit "$inner"
+        else
+            _motd_emit "$inner"
+            _motd_wrap $((inner - 5)) "$desc"
+            for line in "${_MOTD_WRAP[@]}"; do
+                _motd_seg "" "    "
+                _motd_seg "$_MOTD_DESC" "$line"
+                _motd_emit "$inner"
+            done
+        fi
+        i=$((i + 1))
     done
-    _motd_emit "$inner"
+    _MOTD_BG=""
     _motd_rule "$_MOTD_ML" "$inner" "$_MOTD_MR"
 
     _motd_seg "" " "
     _motd_seg "$_MOTD_DESC" "Add "
     _motd_seg "$_MOTD_CMD" "--help"
-    _motd_seg "$_MOTD_DESC" " to any command for details."
+    if [[ $((_MOTD_LEN + ${#_MOTD_HELP_TXT} + 1)) -le "$inner" ]]; then
+        _motd_seg "$_MOTD_DESC" "$_MOTD_HELP_TXT"
+    else
+        _motd_seg "$_MOTD_DESC" "${_MOTD_HELP_TXT%% to see*}"
+        _motd_emit "$inner"
+        _motd_seg "" " "
+        _motd_seg "$_MOTD_DESC" "to see${_MOTD_HELP_TXT#* to see}"
+    fi
     if [[ -n "$counter" ]]; then
         # Right-align the counter; give it its own row if it doesn't fit.
         if [[ $((_MOTD_LEN + 2 + ${#counter})) -gt "$inner" ]]; then
@@ -343,15 +319,17 @@ _motd_welcome() {
 
     _motd_seg "" " "
     _motd_seg "$_MOTD_CMD" "motd --edit"
-    _motd_seg "$_MOTD_DESC" "  your own message"
-    if [[ "$wide" -eq 1 ]]; then
+    _motd_seg "$_MOTD_DESC" "$_MOTD_EDIT_TXT"
+    if [[ $((1 + 11 + ${#_MOTD_EDIT_TXT} + 3 + 10 + ${#_MOTD_OFF_TXT} + 1)) -le "$inner" ]]; then
         _motd_seg "" "   "
     else
         _motd_emit "$inner"
         _motd_seg "" " "
     fi
+    local off_start="$_MOTD_LEN"
     _motd_seg "$_MOTD_CMD" "motd --off"
-    _motd_seg "$_MOTD_DESC" "  turn this off"
+    [[ "$off_start" -eq 1 ]] && _motd_pad_to 12   # line up under "motd --edit"
+    _motd_seg "$_MOTD_DESC" "$_MOTD_OFF_TXT"
     _motd_emit "$inner"
     _motd_rule "$_MOTD_BL" "$inner" "$_MOTD_BR"
 }

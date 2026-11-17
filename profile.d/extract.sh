@@ -26,16 +26,23 @@ Exit codes:
 USAGE
 }
 
-# Safety: refuse obvious path traversal unless forced.
-# Usage: _extract_check_paths <archive> <list-cmd...>   (list-cmd prints one path per line)
+# Safety (skipped with --force): refuse obvious path traversal, and refuse to
+# extract over files that already exist in <dest>. bsdtar -k, unzip -n and
+# 7z -aos skip existing files silently with exit 0, so check up front to get a
+# message and exit 1 on every platform. Existing directories are fine.
+# Usage: _extract_check_paths <archive> <dest> <list-cmd...>   (list-cmd prints one path per line)
 _extract_check_paths() {
-    local file="$1"
-    shift
+    local file="$1" dest="$2"
+    shift 2
     local line
     while IFS= read -r line; do
         [[ -z "$line" ]] && continue
         if [[ "$line" == /* || "$line" == ".." || "$line" == ../* || "$line" == *"/../"* || "$line" == */.. ]]; then
             echo "extract: potential unsafe path detected: $line (use --force to override)" >&2
+            return 1
+        fi
+        if [[ -L "$dest/$line" ]] || [[ -e "$dest/$line" && ! -d "$dest/$line" ]]; then
+            echo "extract: '$dest/$line' already exists (use --force to overwrite)" >&2
             return 1
         fi
     done < <("$@" "$file")
@@ -159,7 +166,7 @@ extract() {
                 *)                tar_mode="" ;;
             esac
             if ! $force; then
-                _extract_check_paths "$archive" tar "t${tar_mode}f" || return 1
+                _extract_check_paths "$archive" "$dest" tar "t${tar_mode}f" || return 1
             fi
             cmd_desc="tar x${tar_mode}f"
             # ${arr[@]+...}: an empty array is "unbound" under set -u in Bash < 4.4.
@@ -171,7 +178,7 @@ extract() {
                 return 1
             fi
             if ! $force; then
-                _extract_check_paths "$archive" unzip -Z1 || return 1
+                _extract_check_paths "$archive" "$dest" unzip -Z1 || return 1
             fi
             cmd_desc="unzip"
             # -o overwrite / -n never overwrite (without either, unzip prompts).
@@ -186,6 +193,9 @@ extract() {
                 echo "unrar is required to extract rar archives." >&2
                 return 1
             fi
+            if ! $force; then
+                _extract_check_paths "$archive" "$dest" unrar lb || return 1
+            fi
             cmd_desc="unrar"
             local unrar_overwrite="-o-"
             $force && unrar_overwrite="-o+"
@@ -197,7 +207,7 @@ extract() {
                 return 1
             fi
             if ! $force; then
-                _extract_check_paths "$archive" _extract_7z_paths || return 1
+                _extract_check_paths "$archive" "$dest" _extract_7z_paths || return 1
             fi
             cmd_desc="7z x"
             # -aoa overwrite all / -aos skip existing (without either, 7z prompts).
