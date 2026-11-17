@@ -1,12 +1,12 @@
 ---
 title: Roadmap (v2)
-repo: My-Mac-Bash-profile
+repo: ShellMate
 doc_version: v2.0
 ---
 
 # Roadmap (v2)
 
-This is the forward-looking roadmap for the next iteration of **My-Mac-Bash-profile**.
+This is the forward-looking roadmap for the next iteration of **ShellMate** (formerly My-Mac-Bash-profile).
 
 Scope for v2 (to prevent bloat):
 

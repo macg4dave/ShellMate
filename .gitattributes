@@ -1,0 +1,6 @@
+# Shell scripts must keep LF endings, even on Windows checkouts
+# (core.autocrlf=true would otherwise break them inside Linux containers).
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary

@@ -1,5 +1,5 @@
 
-# My-Mac-Bash-profile
+# ShellMate (developer notes)
 
 A portable Bash login profile that keeps macOS niceties while remaining friendly on Linux workstations and headless servers.
 
@@ -16,7 +16,7 @@ This profile is intended to be safe to source on:
 
 ### Recommended install (symlink)
 
-1. Clone this repo anywhere (e.g. `~/src/My-Mac-Bash-profile`).
+1. Clone this repo anywhere (e.g. `~/src/ShellMate`).
 2. Back up your current `~/.bash_profile` if you have one.
 3. Symlink the repo’s `.bash_profile` into place.
 

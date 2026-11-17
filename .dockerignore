@@ -1,0 +1,7 @@
+.git
+.github
+.vscode
+.idea
+.claude
+profile.d/local.sh
+**/.DS_Store

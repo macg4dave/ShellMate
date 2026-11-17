@@ -34,3 +34,18 @@ jobs:
 
       - name: Smoke test
         run: make test
+
+  docker:
+    name: Container test (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [debian, fedora, bash32]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build + run
+        run: scripts/docker-test.sh ${{ matrix.target }}

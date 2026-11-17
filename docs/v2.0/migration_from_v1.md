@@ -1,6 +1,6 @@
 ---
 title: Migration from v1 (to v2)
-repo: My-Mac-Bash-profile
+repo: ShellMate
 doc_version: v2.0
 ---
 

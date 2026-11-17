@@ -1,6 +1,6 @@
 ---
 title: Config + module lifecycle (v2)
-repo: My-Mac-Bash-profile
+repo: ShellMate
 doc_version: v2.0
 ---
 

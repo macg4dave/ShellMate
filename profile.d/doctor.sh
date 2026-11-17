@@ -13,7 +13,7 @@ mm_bash_profile_doctor() {
     local os
     os="$(uname -s 2>/dev/null || echo 'Unknown')"
 
-    echo "my-mac-bash-profile doctor"
+    echo "ShellMate doctor"
     echo "bash_version=${bash_ver}"
     echo "os=${os}"
     echo "home=${HOME:-}"

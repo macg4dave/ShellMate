@@ -1,4 +1,6 @@
-# My Mac Bash Profile
+# ShellMate
+
+*(formerly My-Mac-Bash-profile)*
 
 A simple, clean Bash setup that gives you a few genuinely useful commands — without breaking anything, installing junk, or getting in your way.
 
@@ -42,8 +44,8 @@ macOS defaults to *zsh*. This project is for **Bash**. It works perfectly if:
 Clone the repository:
 
 ```bash
-git clone https://github.com/macg4dave/My-Mac-Bash-profile
-cd My-Mac-Bash-profile
+git clone https://github.com/macg4dave/ShellMate
+cd ShellMate
 ```
 
 (If you don’t use git, download the ZIP and unzip it.)
@@ -270,9 +272,22 @@ Both support `--dry-run`.
 
 * Dev docs: `docs/v1.0/readme_for_dev.md`
 * Roadmap: `docs/v2.0/roadmap.md`
+* AI agent rules: `AGENTS.md` (used by Codex, Claude Code via `CLAUDE.md`, and Copilot)
 * Lint/tests:
 
 ```bash
 make lint
 make test
 ```
+
+### Testing in Docker
+
+Run the full suite, plus a real install, in throwaway Linux containers so your own dotfiles are never touched:
+
+```bash
+make docker-test                       # ubuntu, debian, fedora, bash 3.2
+make docker-test TARGETS="bash32"      # just one or more targets
+DOCKER=podman scripts/docker-test.sh   # podman works too
+```
+
+The `bash32` target runs Bash 3.2, the same version as macOS `/bin/bash`, so it catches Bash 4+ syntax. It runs on Alpine, though, not macOS, so CI still runs on a real macOS runner too.

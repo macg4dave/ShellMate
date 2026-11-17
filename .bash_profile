@@ -112,7 +112,7 @@ __bp_deprecated_env() {
 	[[ -z "$new_val" ]] || return 0
 
 	export "${new_name}=${old_val}"
-	__bp_warn "my-mac-bash-profile: '$old_name' is deprecated; use '$new_name' instead"
+	__bp_warn "shellmate: '$old_name' is deprecated; use '$new_name' instead"
 }
 
 __bp_list_contains_any() {

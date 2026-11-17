@@ -1,6 +1,6 @@
 ---
 title: Roadmap
-repo: My-Mac-Bash-profile
+repo: ShellMate
 ---
 
 ## Roadmap
