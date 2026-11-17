@@ -1,7 +1,5 @@
 # ShellMate
 
-*(formerly My-Mac-Bash-profile)*
-
 A simple, clean Bash setup that gives you a few genuinely useful commands — without breaking anything, installing junk, or getting in your way.
 
 Think of it like a small toolbox that quietly makes your terminal nicer on **macOS and Linux**, especially if you move between machines.
