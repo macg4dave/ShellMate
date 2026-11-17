@@ -1,23 +1,28 @@
 ---
-title: Release process (v2)
+title: Release process
 repo: ShellMate
 doc_version: v2.0
 ---
 
 <!-- markdownlint-disable MD025 -->
 
-# Release process (v2)
+# Release process
 
-This repo is intentionally lightweight: the “release artifact” is the git tag + the repository contents. There is no compiled build.
+This repo is intentionally lightweight: there is no compiled build, just packaged shell files.
 
-## Release artifact decision (P4.1)
+## Release artifacts (v3+)
 
-For v2, the official release artifacts are:
+Each release is a **git tag** (`vX.Y.Z`) plus a **GitHub Release** with:
 
-- A **git tag** (e.g., `v2.0.0`)
-- A matching **GitHub Release** generated from that tag (recommended, but content can be minimal)
+- `shellmate-X.Y.Z.tar.gz` and `shellmate-X.Y.Z.zip` — runtime files only
+  (`.bash_profile`, `profile.d/`, `scripts/` minus dev tools, `VERSION`, readme, CHANGELOG)
+- `shellmate-install.sh` — the online installer (`scripts/get-shellmate.sh`):
+  `curl -fsSL https://github.com/macg4dave/ShellMate/releases/latest/download/shellmate-install.sh | bash`
+- `SHA256SUMS` — checksums of the three files above (the installer verifies the tarball)
 
-No Homebrew formula/cask is published as part of v2.
+`scripts/release.sh vX.Y.Z` (or `make dist`) builds these into `dist/`;
+`.github/workflows/release.yml` builds and publishes them when a `v*` tag is pushed.
+No Homebrew formula/cask is published.
 
 ## Preconditions
 
@@ -32,7 +37,7 @@ From a clean checkout of the default branch:
 ### 1) Prepare release notes
 
 - Update `docs/v1.0/CHANGELOG.md`:
-  - Move items from `Unreleased` into a new dated section (example: `## 2.0.0 — 2025-12-14`)
+  - Move items from `Unreleased` into a new dated section (example: `## 3.0.0 — 2026-11-17`)
   - Leave a fresh `## Unreleased` section at the top
 - If there are any behavioral changes, ensure `docs/v2.0/migration_from_v1.md` covers them.
 
@@ -49,16 +54,21 @@ Manual spot-checks (quick):
 - `sysinfo --kv` and `netinfo --kv` (keys present; `N/A` when optional tools missing)
 - `scripts/install.sh --dry-run` (no writes)
 
-### 3) Tag the release
+### 3) Set the version
 
-- Create an annotated tag:
-  - `v2.0.0`, `v2.0.1`, etc.
-- Push tags
+- Put the new version in `VERSION` (e.g. `3.0.1`); it must match the CHANGELOG
+  section heading (`## 3.0.1 — YYYY-MM-DD`). `tests/release.sh` checks this.
+- Optional: `make dist` and try `dist/shellmate-install.sh` locally.
 
-### 4) Publish GitHub release
+### 4) Tag and push — CI publishes the release
 
-- Create a GitHub Release from the tag
-- Paste the relevant changelog section as release notes
+```bash
+git tag -a v3.0.1 -m "ShellMate v3.0.1"
+git push origin master v3.0.1
+```
+
+The Release workflow runs the tests, builds the files and creates the GitHub
+Release with the CHANGELOG section as its notes. Check it under Actions.
 
 ## Rollback guidance
 

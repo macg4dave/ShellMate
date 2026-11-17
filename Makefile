@@ -1,4 +1,4 @@
-.PHONY: lint test docker-test hooks
+.PHONY: lint test docker-test hooks dist
 
 SHELLCHECK ?= shellcheck
 
@@ -27,6 +27,7 @@ test:
 	@bash tests/missing-deps.sh
 	@bash tests/helper_contract.sh
 	@bash tests/regressions.sh
+	@bash tests/release.sh
 	@bash tests/release-hygiene.sh
 
 # Run the suite in disposable Linux containers (ubuntu, debian, fedora, bash 3.2).
@@ -40,3 +41,9 @@ docker-test:
 hooks:
 	@git config core.hooksPath .githooks
 	@echo "hooks: enabled .githooks (pre-commit runs make lint + make test)"
+
+# Build release files into dist/ (tarball, zip, online installer, SHA256SUMS)
+# for the version in the VERSION file. Publishing happens in CI when a v* tag
+# is pushed (.github/workflows/release.yml).
+dist:
+	@bash scripts/release.sh "v$$(cat VERSION)"

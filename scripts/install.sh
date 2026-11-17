@@ -183,6 +183,9 @@ deploy_install_dir() {
   run cp -p "$src_root/.bash_profile" "$install_dir/.bash_profile"
   run cp -R "$src_root/profile.d" "$install_dir/profile.d"
   run cp -R "$src_root/scripts" "$install_dir/scripts"
+  if [[ -f "$src_root/VERSION" ]]; then
+    run cp -p "$src_root/VERSION" "$install_dir/VERSION"
+  fi
 
   # Ensure scripts remain executable (portable loop, no find -exec assumptions).
   if [[ -d "$install_dir/scripts" ]]; then

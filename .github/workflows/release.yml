@@ -1,0 +1,35 @@
+name: Release
+
+# Push a tag like v3.0.0 (matching the VERSION file and a CHANGELOG section)
+# to test, build and publish a GitHub release with the tarball, zip, online
+# installer and SHA256SUMS.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Test
+        run: make test
+
+      - name: Build release files
+        run: scripts/release.sh "$GITHUB_REF_NAME" dist
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            dist/shellmate-*.tar.gz dist/shellmate-*.zip \
+            dist/shellmate-install.sh dist/SHA256SUMS \
+            --title "ShellMate $GITHUB_REF_NAME" \
+            --notes-file dist/RELEASE_NOTES.md \
+            --verify-tag

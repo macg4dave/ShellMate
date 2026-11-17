@@ -35,7 +35,27 @@ macOS defaults to *zsh*. This project is for **Bash**. It works perfectly if:
 
 ---
 
-## Install — step by step (recommended)
+## Quick install (one line)
+
+```bash
+curl -fsSL https://github.com/macg4dave/ShellMate/releases/latest/download/shellmate-install.sh | bash
+```
+
+This downloads the latest release, checks its SHA256 checksum, and runs the normal
+installer below (which backs up anything it replaces and asks before overwriting).
+Add options after `bash -s --`, for example:
+
+```bash
+curl -fsSL https://github.com/macg4dave/ShellMate/releases/latest/download/shellmate-install.sh | bash -s -- --yes
+```
+
+Prefer to look first? Download `shellmate-install.sh` and read it, or grab the
+`.tar.gz` / `.zip` from the [Releases page](https://github.com/macg4dave/ShellMate/releases),
+unpack it and run `scripts/install.sh --repo "$(pwd)"` inside.
+
+---
+
+## Install — step by step (from git)
 
 ### 1. Download the project
 

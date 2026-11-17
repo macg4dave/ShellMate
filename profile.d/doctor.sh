@@ -13,7 +13,13 @@ mm_bash_profile_doctor() {
     local os
     os="$(uname -s 2>/dev/null || echo 'Unknown')"
 
+    local version="unknown"
+    if [[ -r "$(dirname "${BASH_SOURCE[0]}")/../VERSION" ]]; then
+        read -r version < "$(dirname "${BASH_SOURCE[0]}")/../VERSION" || true
+    fi
+
     echo "ShellMate doctor"
+    echo "shellmate_version=${version:-unknown}"
     echo "bash_version=${bash_ver}"
     echo "os=${os}"
     echo "home=${HOME:-}"

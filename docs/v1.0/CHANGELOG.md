@@ -6,6 +6,33 @@ This repo is a portable Bash login profile (macOS + Linux) with helper functions
 
 ## Unreleased
 
+## 3.0.0 — 2026-11-17
+
+**Install in one line** (macOS + Linux):
+
+```bash
+curl -fsSL https://github.com/macg4dave/ShellMate/releases/latest/download/shellmate-install.sh | bash
+```
+
+Each release also ships `shellmate-3.0.0.tar.gz`, `shellmate-3.0.0.zip` and `SHA256SUMS`.
+
+### Upgrading from 2.x
+
+Most people need to do nothing: re-run the installer (or the one-liner above);
+your old `~/.my-mac-bash-profile` is backed up first. Things that changed in a
+way scripts could notice:
+
+- `netinfo --kv`: `local_ip` on Linux has no `/prefix` any more (`192.168.1.5`, not `192.168.1.5/24`)
+- `sysinfo --kv`: `cpu_*` are current usage, not the average since boot
+- `jd` / `jdir`: unknown options before the URL now fail (exit 2); `wget` options go after the URL
+- `extract` without `--force` fails (exit 1) when files already exist, instead of overwriting or skipping
+- `sysinfo` no longer defines `main`, `find_os`, `human_bytes`, etc. in your shell
+- The unused env-var deprecation helper and `docs/v2.0/deprecation_policy.md` are gone
+
+### Changes
+
+- Online installer (`shellmate-install.sh`): fetches a release, verifies its SHA256, runs the normal installer; the tarball/zip are built by `scripts/release.sh` (`make dist`) and published by CI when a `v*` tag is pushed
+- `VERSION` file; `mm_bash_profile_doctor` prints `shellmate_version=`
 - Startup can't be killed by a mistake in a module or `local.sh`: `exit`/`logout` and `set -e` there are ignored with a warning; `BASH_PROFILE_SAFE_MODE=1` skips modules and overrides for recovery
 - `motd`: your message is cleaned before display (escape codes, `\r`, tabs) and capped (40 lines, 200 chars per line), so a bad paste can't garble the terminal or slow logins
 - New `motd` module: the first 3 interactive shells show a colourful boxed welcome listing each command with a short description (rows striped like `sysinfo --box`); `motd --edit` sets your own login message (`#` lines are notes; the starter file explains how to turn it off and shows nothing until you write something), `motd --off`/`--on` toggles it

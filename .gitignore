@@ -2,4 +2,5 @@
 profile.d/local.sh
 
 # Cache/artifacts
+dist/
 .DS_Store
