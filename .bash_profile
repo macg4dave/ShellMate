@@ -58,6 +58,95 @@ __bp_warn() {
 	printf '%s\n' "$*" >&2
 }
 
+#------------------------------------------------------------------------------
+# Load guard: a mistake in a module or local override must not cost the user
+# their terminal. While each file loads:
+#   - `exit` / `logout` are ignored (with a warning): they would close the
+#     terminal the moment it opens;
+#   - `set -e` / `set -o errexit` is dropped (with a warning): afterwards any
+#     failing command would close the terminal.
+# Files are still sourced at top level (not inside a function), so their
+# `declare` / `local` behave exactly as before.
+#------------------------------------------------------------------------------
+
+# shellcheck disable=SC2317,SC2329
+__bp_guard_set() {
+	local __bp_i=1 __bp_a __bp_next __bp_dropped=0
+	local __bp_out=()
+	while [[ "$__bp_i" -le $# ]]; do
+		__bp_a="${!__bp_i}"
+		case "$__bp_a" in
+			-|--|[!-+]*)
+				# Setting positional parameters can't work through a wrapper
+				# function (it would only set the wrapper's own), so say so
+				# rather than silently doing nothing.
+				__bp_warn "shellmate: 'set -- ...' isn't supported in ${__bp_guard_file:-startup files}; use an array instead"
+				break
+				;;
+			-o)
+				__bp_next=$((__bp_i + 1))
+				if [[ "${!__bp_next:-}" == "errexit" ]]; then
+					__bp_dropped=1
+					__bp_i=$((__bp_i + 2))
+					continue
+				fi
+				;;
+			-*e*)
+				# Short-option cluster such as -e or -euo: drop just the e.
+				__bp_dropped=1
+				__bp_a="${__bp_a//e/}"
+				if [[ "$__bp_a" == "-" ]]; then
+					__bp_i=$((__bp_i + 1))
+					continue
+				fi
+				;;
+		esac
+		__bp_out+=("$__bp_a")
+		__bp_i=$((__bp_i + 1))
+	done
+	if [[ "$__bp_dropped" -eq 1 ]]; then
+		__bp_warn "shellmate: ignored 'set -e' in ${__bp_guard_file:-a startup file} (one failing command would close your terminal)"
+	fi
+	# Plain `set` with no arguments would print every variable; don't.
+	[[ ${#__bp_out[@]} -gt 0 ]] || return 0
+	builtin set "${__bp_out[@]}"
+}
+
+# shellcheck disable=SC2317,SC2329
+__bp_guard_on() {
+	__bp_guard_file="$1"
+	__bp_guard_defined=""
+	__bp_guard_errexit=0
+	[[ $- == *e* ]] && __bp_guard_errexit=1
+	# Never replace a function the user defined themselves.
+	if ! declare -F exit >/dev/null 2>&1; then
+		exit() { __bp_warn "shellmate: ignored 'exit' in ${__bp_guard_file} (it would close your terminal)"; return 0; }
+		__bp_guard_defined+=" exit"
+	fi
+	if ! declare -F logout >/dev/null 2>&1; then
+		logout() { __bp_warn "shellmate: ignored 'logout' in ${__bp_guard_file} (it would close your terminal)"; return 0; }
+		__bp_guard_defined+=" logout"
+	fi
+	if ! declare -F set >/dev/null 2>&1; then
+		set() { __bp_guard_set "$@"; }
+		__bp_guard_defined+=" set"
+	fi
+}
+
+# shellcheck disable=SC2317,SC2329
+__bp_guard_off() {
+	local __bp_fn
+	for __bp_fn in $__bp_guard_defined; do
+		unset -f "$__bp_fn"
+	done
+	# Belt and braces: if errexit got switched on anyway (e.g. via shopt), undo it.
+	if [[ $- == *e* && "$__bp_guard_errexit" -eq 0 ]]; then
+		builtin set +e
+		__bp_warn "shellmate: turned 'set -e' back off after ${__bp_guard_file} (it would close your terminal on any error)"
+	fi
+	unset __bp_guard_file __bp_guard_defined __bp_guard_errexit
+}
+
 __bp_list_contains_any() {
 	# Usage: __bp_list_contains_any "list" candidate1 [candidate2 ...]
 	local list="$1"
@@ -92,8 +181,10 @@ __bp_should_source_module() {
 
 # Source common helpers first (defines has_cmd + IS_MAC/IS_LINUX + PATH helpers).
 if [[ -r "$__bp_profile_d/10-common.sh" ]]; then
+	__bp_guard_on "$__bp_profile_d/10-common.sh"
 	# shellcheck source=/dev/null
 	source "$__bp_profile_d/10-common.sh"
+	__bp_guard_off
 fi
 
 # Aliases, prompt and PATH need IS_MAC + path_prepend_if_exists from
@@ -147,8 +238,13 @@ fi
 
 #------------------------------------------------------------------------------
 # Load remaining modules (if present).
+#
+# Recovery: BASH_PROFILE_SAFE_MODE=1 skips all modules and local overrides,
+# e.g. `BASH_PROFILE_SAFE_MODE=1 bash -l` (or as your terminal's command).
 #------------------------------------------------------------------------------
-if [[ -d "$__bp_profile_d" ]]; then
+if [[ "${BASH_PROFILE_SAFE_MODE:-0}" == "1" ]]; then
+	__bp_warn "shellmate: safe mode - modules and local overrides not loaded (unset BASH_PROFILE_SAFE_MODE to leave it)"
+elif [[ -d "$__bp_profile_d" ]]; then
 	__bp_nullglob_was_set=0
 	shopt -q nullglob && __bp_nullglob_was_set=1
 	shopt -s nullglob
@@ -172,29 +268,37 @@ if [[ -d "$__bp_profile_d" ]]; then
 				"$__bp_profile_d"/[0-9][0-9]-*.sh) continue ;;
 			esac
 			__bp_should_source_module "$__bp_f" || continue
+			__bp_guard_on "$__bp_f"
 			# shellcheck source=/dev/null
 			source "$__bp_f"
+			__bp_guard_off
 		done
 	else
 		for __bp_f in "$__bp_profile_d"/[0-9][0-9]-*.sh; do
 			[[ -r "$__bp_f" ]] || continue
 			[[ "$__bp_f" == "$__bp_profile_d/10-common.sh" ]] && continue
 			__bp_should_source_module "$__bp_f" || continue
+			__bp_guard_on "$__bp_f"
 			# shellcheck source=/dev/null
 			source "$__bp_f"
+			__bp_guard_off
 		done
 	fi
 	unset __bp_has_unnumbered
 
 	# Local override modules (sourced last).
 	if [[ -r "$__bp_profile_d/local.sh" ]]; then
+		__bp_guard_on "$__bp_profile_d/local.sh"
 		# shellcheck source=/dev/null
 		source "$__bp_profile_d/local.sh"
+		__bp_guard_off
 	fi
 	__bp_xdg_local="${XDG_CONFIG_HOME:-$HOME/.config}/my-mac-bash-profile/local.sh"
 	if [[ -r "$__bp_xdg_local" ]]; then
+		__bp_guard_on "$__bp_xdg_local"
 		# shellcheck source=/dev/null
 		source "$__bp_xdg_local"
+		__bp_guard_off
 	fi
 	unset __bp_xdg_local
 
@@ -207,7 +311,8 @@ if [[ -d "$__bp_profile_d" ]]; then
 fi
 
 unset __bp_source __bp_dir __bp_link __bp_root __bp_profile_d __bp_f __bp_modules_enable __bp_modules_disable
-unset -f __bp_list_contains_any __bp_should_source_module __bp_is_interactive __bp_warn 2>/dev/null || true
+unset -f __bp_list_contains_any __bp_should_source_module __bp_is_interactive __bp_warn \
+	__bp_guard_set __bp_guard_on __bp_guard_off 2>/dev/null || true
 
 #-----------------------------------
 ## END

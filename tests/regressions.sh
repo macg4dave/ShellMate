@@ -198,13 +198,25 @@ motd_login() {
     | grep -vE 'job control|terminal process group' || true
 }
 for n in 1 2 3; do
-  motd_login | grep -q "shows $n of 3" || fail "motd welcome missing on interactive shell $n"
+  motd_login | grep -q "$n of 3" || fail "motd welcome missing on interactive shell $n"
 done
 [[ -z "$(motd_login)" ]] || fail "motd welcome still shown after 3 shells"
 # shellcheck disable=SC2016  # expanded by the inner shell, on purpose
 [[ -z "$(env -i HOME="$motd_home/fresh" PATH="$PATH" bash --noprofile --norc -c 'source "$1/.bash_profile"' _ "$repo_root" 2>&1)" ]] \
   || fail "motd printed in a non-interactive shell"
 [[ -z "$(motd_login BASH_PROFILE_MOTD=0 HOME="$motd_home/env-off")" ]] || fail "BASH_PROFILE_MOTD=0 did not silence motd"
+
+# `motd --edit` saved untouched: the starter is all # notes, so no message.
+MOTD_CMD='EDITOR=true motd --edit' motd_login >/dev/null
+starter="$motd_home/.config/my-mac-bash-profile/motd"
+[[ -s "$starter" ]] || fail "motd --edit did not create a starter file"
+grep -q 'motd --off' "$starter" || fail "motd starter file does not explain how to turn it off"
+[[ -z "$(motd_login)" ]] || fail "untouched motd starter file was shown as a message"
+[[ "$(MOTD_CMD='motd' motd_login | head -n 1)" == "Welcome to ShellMate"* ]] \
+  || fail "motd with an untouched starter file should show the welcome"
+
+printf '# a note\n\ncustom hello\n# another note\n\n' > "$starter"
+[[ "$(motd_login)" == "custom hello" ]] || fail "motd showed # notes or blank padding"
 
 mkdir -p "$motd_home/.config/my-mac-bash-profile"
 printf 'custom hello' > "$motd_home/.config/my-mac-bash-profile/motd"
@@ -213,5 +225,68 @@ MOTD_CMD='motd --off' motd_login >/dev/null
 [[ -z "$(motd_login)" ]] || fail "motd --off did not stop the login message"
 MOTD_CMD='motd --on' motd_login >/dev/null
 [[ "$(motd_login)" == "custom hello" ]] || fail "motd --on did not bring the message back"
+
+# Box layout: every line the same width; art only when there is room; no
+# colour codes when not writing to a terminal.
+(
+  # shellcheck source=/dev/null
+  source "$repo_root/profile.d/motd.sh"
+  wide="$(COLUMNS=80 TERM=xterm LC_ALL=C motd)"
+  [[ "$wide" == *"<___/\___>"* ]] || fail "motd box is missing the seashell art at 80 columns"
+  [[ "$wide" != *$'\033'* ]] || fail "motd printed colour codes to a non-terminal"
+  widths="$(printf '%s\n' "$wide" | awk '{print length($0)}' | sort -u | tr -d '[:space:]')"
+  [[ "$widths" == 72 ]] || fail "motd box lines have uneven widths: $widths"
+  narrow="$(COLUMNS=50 TERM=xterm LC_ALL=C motd)"
+  [[ "$narrow" != *"<___/"* && "$narrow" == "+---"*"Welcome to ShellMate"* ]] || fail "motd at 50 columns should be a box without art"
+  [[ "$(COLUMNS=30 TERM=xterm motd | head -n 1)" == "Welcome to ShellMate"* ]] || fail "motd at 30 columns should be plain"
+)
+
+# --- load guard: a bad local override must not close the terminal ---------------
+
+guard_home="$tmp_home/guard-home"
+mkdir -p "$guard_home/.config/my-mac-bash-profile"
+guard_local="$guard_home/.config/my-mac-bash-profile/local.sh"
+guard_login() {
+  # shellcheck disable=SC2016  # expanded by the inner shell, on purpose
+  env -i HOME="$guard_home" PATH="$PATH" TERM=dumb BASH_PROFILE_MOTD=0 "$@" \
+    bash --noprofile --norc -i -c 'source "$1/.bash_profile"; echo ALIVE; [[ $- == *e* ]] && echo ERREXIT; echo "VAR=${MY_VAR:-}"; type -t exit' _ "$repo_root" 2>&1 \
+    | grep -vE 'job control|terminal process group' || true
+}
+for body in 'exit' 'exit 1' 'logout' 'set -e; false' 'set -euo pipefail; false' 'set -o errexit; false'; do
+  printf '%s\n' "$body" > "$guard_local"
+  out="$(guard_login)"
+  [[ "$out" == *ALIVE* ]] || fail "local.sh containing '$body' killed the shell"
+  [[ "$out" != *ERREXIT* ]] || fail "local.sh containing '$body' left set -e on"
+  [[ "$out" == *"shellmate: ignored"* ]] || fail "no warning for '$body' in local.sh"
+  [[ "$(printf '%s\n' "$out" | tail -n 1)" == builtin ]] || fail "guard functions left behind after '$body'"
+done
+printf 'declare -x MY_VAR=kept\n' > "$guard_local"
+[[ "$(guard_login)" == *"VAR=kept"* ]] || fail "declare in local.sh no longer reaches the shell"
+printf 'exit\n' > "$guard_local"
+out="$(guard_login BASH_PROFILE_SAFE_MODE=1)"
+[[ "$out" == *"safe mode"* && "$out" != *"ignored 'exit'"* ]] || fail "BASH_PROFILE_SAFE_MODE=1 still loaded local.sh"
+rm -f "$guard_local"
+
+# --- motd: the message file is text only, cleaned, and size-capped --------------
+
+(
+  # shellcheck source=/dev/null
+  source "$repo_root/profile.d/motd.sh"
+  msg="$tmp_home/motd-msg"
+  # shellcheck disable=SC2016  # a literal $(...) on purpose: it must never run
+  printf 'hi \033[2J\033(0there\r\n$(touch %s/pwned)\ttab\n' "$tmp_home" > "$msg"
+  _motd_read_message "$msg" || fail "motd message not read"
+  joined="$(printf '%s|' "${_MOTD_MSG[@]}")"
+  [[ "$joined" != *[[:cntrl:]]* ]] || fail "motd message kept control characters"
+  # shellcheck disable=SC2016  # a literal $(...) on purpose: it must never run
+  [[ "$joined" == *'$(touch'* && ! -e "$tmp_home/pwned" ]] || fail "motd message was executed"
+  seq 1 100000 > "$msg"
+  _motd_read_message "$msg"
+  [[ ${#_MOTD_MSG[@]} -eq 40 ]] || fail "motd message not capped at 40 lines (${#_MOTD_MSG[@]})"
+  rm -f "$msg"
+  mkdir "$msg"
+  _motd_read_message "$msg" 2>/dev/null && fail "motd treated a directory as a message"
+  rmdir "$msg"
+)
 
 echo "regressions: ok"

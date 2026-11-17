@@ -123,7 +123,7 @@ motd --edit    # write your own message, shown every time a terminal opens
 motd --off     # no message at login (motd --on brings it back)
 ```
 
-Your message lives in `~/.config/my-mac-bash-profile/motd` (plain text). Delete that file to go back to the welcome.
+Your message lives in `~/.config/my-mac-bash-profile/motd` (plain text). Lines starting with `#` are notes and never shown, so if you open `motd --edit` and save without writing anything, you keep the welcome. Delete the file to go back to the welcome.
 
 macOS‑only extras:
 
@@ -152,10 +152,22 @@ bash -l
 
 ### “Something broke my shell”
 
+ShellMate protects you from the most common mistakes in your own `local.sh`:
+an `exit`, `logout` or `set -e` there is ignored (with a `shellmate:` warning
+telling you which file), so your terminal still opens and you can fix it.
+Your login message (`motd --edit`) is only ever shown as text, never run.
+
 Disable a feature without editing files:
 
 ```bash
 export BASH_PROFILE_MODULES_DISABLE="netinfo"
+```
+
+Still stuck? Start a shell with **safe mode**, which skips all modules and your
+local overrides, then fix or delete the file that broke things:
+
+```bash
+BASH_PROFILE_SAFE_MODE=1 bash -l     # or: bash --noprofile --norc
 ```
 
 Open a new terminal to confirm everything works.

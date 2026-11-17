@@ -35,6 +35,7 @@ Read the relevant doc before touching that area:
 Sourcing `.bash_profile` or any `profile.d/*.sh` must **not**: make network calls,
 prompt, hang, run slow/heavy pipelines, write outside normal shell state, or print
 to stdout. Warnings go to stderr and only in interactive shells (`__bp_warn`).
+Every file is loaded between `__bp_guard_on`/`__bp_guard_off`, which neutralise `exit`, `logout` and `set -e` so a mistake can't close the user's terminal.
 Startup has a time budget enforced by `tests/perf-startup.sh` — do expensive work
 lazily inside the helper function, not at source time.
 
