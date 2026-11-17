@@ -47,7 +47,10 @@ done
 for f in profile.d/local.sh scripts/docker-test.sh tests/; do
   [[ "$listing" != *"$name/$f"* ]] || fail "tarball should not contain $f"
 done
-unzip -l "$dist/$name.zip" | grep -q "$name/profile.d/motd.sh" || fail "zip is missing profile.d/motd.sh"
+# Capture first: piping into `grep -q` lets unzip die of SIGPIPE, which
+# pipefail turns into a false "missing".
+zip_listing="$(unzip -l "$dist/$name.zip")" || fail "could not list $name.zip"
+[[ "$zip_listing" == *"$name/profile.d/motd.sh"* ]] || fail "zip is missing profile.d/motd.sh"
 
 # Online installer, end to end, into a throwaway HOME.
 home="$tmp/home"

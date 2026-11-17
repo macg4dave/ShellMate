@@ -6,6 +6,10 @@ This repo is a portable Bash login profile (macOS + Linux) with helper functions
 
 ## Unreleased
 
+## 3.1.1 — 2026-11-17
+
+- WSL: folders on Windows drives (`/mnt/c`, …) are now bright yellow on black in `ls`, so you can tell at a glance you're on a Windows drive; change it with `BASH_PROFILE_WSL_DIR_COLOR`. This also fixes folders still showing blue on green in terminals that start Bash as a non-login shell, where `~/.bashrc` set the system colours first.
+
 ## 3.1.0 — 2026-11-17
 
 ### Upgrading from 3.0

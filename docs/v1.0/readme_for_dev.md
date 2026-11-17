@@ -173,6 +173,7 @@ Keys (stable order):
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
+| `BASH_PROFILE_WSL_DIR_COLOR` | `01;33;40` | WSL only: `ls` colour (SGR code) for folders on Windows drives mounted without `metadata`. Invalid values fall back to the default. |
 | `BASH_PROFILE_CD_LS` | `1` | If set to `0`, disables the convenience behavior in `profile.d/10-common.sh` that runs `ls -hla` after each successful `cd` (interactive shells only). |
 | `BASH_PROFILE_MODULES_DISABLE` | empty | Space- or comma-separated list of modules to skip (by stem or filename). |
 | `BASH_PROFILE_MODULES_ENABLE` | empty | If set, only modules in this list will be loaded (by stem or filename). |

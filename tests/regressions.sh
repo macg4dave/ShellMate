@@ -325,6 +325,17 @@ if [[ "${IS_LINUX:-false}" == "true" ]] && command ls --version 2>/dev/null | gr
     [[ "$out" == *" prog"* && "$out" != *"prog*"* ]] || fail "linux: Windows drive listing still marks files with *: $out"
     out="$(LS_COLORS='' _linux_wsl_ls --color=always "$drive")"
     [[ "$out" != *$'\033[01;32mprog'* ]] || fail "linux: Windows drive listing still colours files as programs"
+    # Folders get their own colour, even over dircolors' blue-on-green.
+    mkdir -p "$drive/folder"
+    chmod 777 "$drive/folder"
+    out="$(LS_COLORS='di=01;34:ow=34;42:tw=30;42' _linux_wsl_ls --color=always "$drive")"
+    [[ "$out" == *$'\033[01;33;40mfolder'* ]] || fail "linux: Windows drive folders not yellow on black: $out"
+    out="$(BASH_PROFILE_WSL_DIR_COLOR='01;34' LS_COLORS='ow=34;42' _linux_wsl_ls --color=always "$drive")"
+    [[ "$out" == *$'\033[01;34mfolder'* ]] || fail "linux: BASH_PROFILE_WSL_DIR_COLOR ignored: $out"
+    # shellcheck disable=SC2016  # a literal bogus value, on purpose
+    out="$(BASH_PROFILE_WSL_DIR_COLOR='1;33$(x)' _linux_wsl_ls --color=always "$drive")"
+    [[ "$out" == *$'\033[01;33;40mfolder'* ]] || fail "linux: bad BASH_PROFILE_WSL_DIR_COLOR not replaced by default: $out"
+
     out="$(_linux_wsl_ls "$native")"
     [[ "$out" == *"prog*"* ]] || fail "linux: native listing lost the * marker: $out"
     out="$(cd "$drive" && _linux_wsl_ls)"

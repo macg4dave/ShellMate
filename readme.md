@@ -198,8 +198,15 @@ Open a new terminal to confirm everything works.
 
 On WSL, Windows drives (`/mnt/c`, …) show every file as `rwxrwxrwx`, so plain
 `ls` would colour every file as a program and add a `*` after it. ShellMate
-handles this for you: on those drives, folders show in normal blue and files
-show plain, the same as on a regular Linux machine.
+handles this for you: on those drives, files show plain and folders show in
+**bright yellow on black**, so you can tell at a glance you're on a Windows drive.
+
+Prefer another folder colour? Set it in your `local.sh` (it's a standard
+`ls` colour code), e.g. normal Linux blue:
+
+```bash
+export BASH_PROFILE_WSL_DIR_COLOR="01;34"
+```
 
 Optional: if you want real Linux permissions on Windows drives (so `chmod`
 works there), put this in `/etc/wsl.conf`, then run `wsl --shutdown` from

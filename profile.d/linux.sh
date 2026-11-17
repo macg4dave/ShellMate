@@ -9,11 +9,7 @@
 # Keep this file safe to source on any host and avoid hard dependencies.
 
 #------------------------------------------------------------------------------
-## WSL: readable ls colours on Windows drives
-# Windows drives (/mnt/c, ...) are mounted with every file 0777 by default, so
-# GNU ls paints every directory as "other-writable" (blue on green). Show those
-# directories like normal ones instead. Only applies on WSL, and only when the
-# user hasn't already chosen their own ow=/tw= colours.
+## WSL detection
 #------------------------------------------------------------------------------
 
 _linux_is_wsl() {
@@ -28,11 +24,15 @@ _linux_is_wsl() {
 }
 
 #------------------------------------------------------------------------------
-## WSL: don't show every file on a Windows drive as a program
-# Without the drvfs "metadata" mount option every file there is executable, so
-# `ls` would paint them all bold green and add a `*`. On those mounts list them
-# with no "executable" colour and only / @ | = markers. Mounts are read lazily,
-# on the first `ls`, never at source time.
+## WSL: readable `ls` on Windows drives
+# Without the drvfs "metadata" mount option every file and folder on a Windows
+# drive (/mnt/c, ...) is 0777, so `ls` would paint every file bold green with a
+# `*` (executable) and every folder blue on green (other-writable). On those
+# mounts, list files plainly and folders in their own colour:
+#   BASH_PROFILE_WSL_DIR_COLOR   SGR code for folders (default 01;33;40, bright
+#                                yellow on black; e.g. 01;34 for normal blue)
+# The colours are added last, so they win over LS_COLORS from dircolors in
+# ~/.bashrc. Mounts are read lazily, on the first `ls`, never at source time.
 #------------------------------------------------------------------------------
 
 _linux_wsl_mounts_file="/proc/mounts"
@@ -71,7 +71,10 @@ _linux_wsl_on_plain_mount() {
 # Same listing as the `ls` alias, minus the "everything is a program" look on
 # Windows drives. Decides from the paths given, or from $PWD when there are none.
 _linux_wsl_ls() {
-    local a plain=0 has_path=0
+    local a plain=0 has_path=0 dir_color="${BASH_PROFILE_WSL_DIR_COLOR:-01;33;40}"
+    case "$dir_color" in
+        ""|*[!0-9\;]*) dir_color="01;33;40" ;;
+    esac
     for a in "$@"; do
         case "$a" in -*) continue ;; esac
         has_path=1
@@ -81,17 +84,14 @@ _linux_wsl_ls() {
         plain=1
     fi
     if [[ "$plain" -eq 1 ]]; then
-        LS_COLORS="${LS_COLORS:+${LS_COLORS%:}:}ex=00" command ls --color=auto --file-type -hla "$@"
+        LS_COLORS="${LS_COLORS:+${LS_COLORS%:}:}ex=00:di=$dir_color:ow=$dir_color:tw=$dir_color" \
+            command ls --color=auto --file-type -hla "$@"
     else
         command ls --color=auto -Fhla "$@"
     fi
 }
 
 if _linux_is_wsl; then
-    case ":${LS_COLORS:-}:" in
-        *:ow=*|*:tw=*) ;;
-        *) export LS_COLORS="${LS_COLORS:+${LS_COLORS%:}:}ow=01;34:tw=01;34" ;;
-    esac
     alias ls='_linux_wsl_ls'
     __BP_LS_FUNC="_linux_wsl_ls"   # the cd hook in 10-common.sh lists with this
 fi
