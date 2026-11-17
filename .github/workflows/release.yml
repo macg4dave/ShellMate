@@ -1,7 +1,7 @@
 name: Release
 
 # Push a tag like v3.0.0 (matching the VERSION file and a CHANGELOG section)
-# to test, build and publish a GitHub release with the tarball, zip, online
+# to build and publish a GitHub release with the tarball, zip, online
 # installer and SHA256SUMS.
 on:
   push:
@@ -16,9 +16,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Test
-        run: make test
 
       - name: Build release files
         run: scripts/release.sh "$GITHUB_REF_NAME" dist

@@ -13,7 +13,7 @@ This document defines what “compatible” means for this repo: what we support
 ### Supported (must keep working)
 
 - **Bash**: macOS system `/bin/bash` (**3.2**) and modern Linux Bash (4.x+).
-- **OS**: macOS (current macOS runner in CI) and Linux (current Ubuntu runner in CI).
+- **OS**: current macOS and Linux (Ubuntu as the baseline).
 - **Sourcing safety**: `source ~/.bash_profile` must not error, prompt, or hang.
 - **Install paths**:
   - symlink install: `<repo>/.bash_profile` → `~/.bash_profile`
@@ -54,7 +54,7 @@ For “core helpers” (currently: `sysinfo`, `netinfo`, `extract`, `flushdns`, 
 - Failures exit 1 and print an error to stderr.
 - If an optional dependency is missing, output should degrade to `N/A` (or a clear message if the tool is required for the requested operation).
 - Any machine-readable mode must be stable and conservative (baseline: `--kv` with `key=value` lines).
-- The details and helper-by-helper inventory live in `docs/v2.0/helper_contract.md`, and `tests/helper_contract.sh` exercises every helper’s `--help` path plus the `--kv` ordering to keep this contract enforced in CI.
+- The details and helper-by-helper inventory live in `docs/v2.0/helper_contract.md`, and `tests/helper_contract.sh` exercises every helper’s `--help` path plus the `--kv` ordering, so `make test` enforces this contract.
 
 ## Compatibility matrix (current)
 
@@ -143,4 +143,4 @@ This repo’s compatibility baseline is enforced by:
 - `tests/perf-startup.sh`, which measures `source ~/.bash_profile` and fails if the Linux baseline exceeds the 0.9 s budget.
 - `tests/safe-source.sh`, which stubs dangerous commands and confirms sourcing the profile leaves only the documented XDG/cached files behind.
 - `tests/missing-deps.sh`, which hides optional utilities via a `command` shim and checks that `netinfo`/`sysinfo` still exit cleanly while emitting `N/A` for the blocked fields.
-- CI on Linux + macOS runners
+- `make docker-test` (Ubuntu, Debian, Fedora, Bash 3.2) plus a manual check on a real Mac

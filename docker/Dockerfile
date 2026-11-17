@@ -7,7 +7,7 @@
 # or just use:  scripts/docker-test.sh [ubuntu|debian|fedora|bash32|all]
 #
 # Targets:
-#   ubuntu  - CI baseline (Supported); full toolset incl. shellcheck
+#   ubuntu  - baseline (Supported); full toolset incl. shellcheck
 #   debian  - Best-effort distro; slim image, few optional tools
 #   fedora  - Best-effort distro; dnf-based, ShellCheck available
 #   bash32  - Bash 3.2 (same major/minor as macOS /bin/bash) on Alpine/busybox.

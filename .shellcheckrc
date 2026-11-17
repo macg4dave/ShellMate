@@ -1,4 +1,4 @@
-# ShellCheck config shared by `make lint`, CI, and editor integrations
+# ShellCheck config shared by `make lint`, the pre-commit hook, and editor integrations
 # (e.g. the VS Code ShellCheck extension), so all of them agree.
 #
 # Per AGENTS.md, don't disable checks here: disable them inline, with a reason.

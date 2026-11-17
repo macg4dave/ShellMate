@@ -6,6 +6,8 @@ This repo is a portable Bash login profile (macOS + Linux) with helper functions
 
 ## Unreleased
 
+- Removed the GitHub CI test workflow; tests run locally (`make test`, `make docker-test`, or automatically before each commit via `make hooks`). Pushing a `v*` tag still publishes a release.
+
 ## 3.0.0 — 2026-11-17
 
 **Install in one line** (macOS + Linux):

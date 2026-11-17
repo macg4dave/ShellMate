@@ -324,7 +324,7 @@ make test
 make hooks   # once per clone: run lint + tests automatically before each commit
 ```
 
-Tests also run automatically in GitHub Actions on every push and pull request, and weekly.
+Tests run locally only (there is no CI test run on GitHub), so `make hooks` is the way to run them automatically.
 
 ### Testing in Docker
 
@@ -336,4 +336,4 @@ make docker-test TARGETS="bash32"      # just one or more targets
 DOCKER=podman scripts/docker-test.sh   # podman works too
 ```
 
-The `bash32` target runs Bash 3.2, the same version as macOS `/bin/bash`, so it catches Bash 4+ syntax. It runs on Alpine, though, not macOS, so CI still runs on a real macOS runner too.
+The `bash32` target runs Bash 3.2, the same version as macOS `/bin/bash`, so it catches Bash 4+ syntax. It runs on Alpine, though, not macOS, so also test on a real Mac before releasing.

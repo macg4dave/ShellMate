@@ -43,7 +43,7 @@ hooks:
 	@echo "hooks: enabled .githooks (pre-commit runs make lint + make test)"
 
 # Build release files into dist/ (tarball, zip, online installer, SHA256SUMS)
-# for the version in the VERSION file. Publishing happens in CI when a v* tag
-# is pushed (.github/workflows/release.yml).
+# for the version in the VERSION file. GitHub publishes the release when a v*
+# tag is pushed (.github/workflows/release.yml).
 dist:
 	@bash scripts/release.sh "v$$(cat VERSION)"

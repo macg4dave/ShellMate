@@ -60,14 +60,14 @@ Manual spot-checks (quick):
   section heading (`## 3.0.1 — YYYY-MM-DD`). `tests/release.sh` checks this.
 - Optional: `make dist` and try `dist/shellmate-install.sh` locally.
 
-### 4) Tag and push — CI publishes the release
+### 4) Tag and push — GitHub publishes the release
 
 ```bash
 git tag -a v3.0.1 -m "ShellMate v3.0.1"
 git push origin master v3.0.1
 ```
 
-The Release workflow runs the tests, builds the files and creates the GitHub
+The Release workflow builds the files and creates the GitHub
 Release with the CHANGELOG section as its notes. Check it under Actions.
 
 ## Rollback guidance

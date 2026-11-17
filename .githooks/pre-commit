@@ -20,8 +20,9 @@ echo "pre-commit: make lint + make test (skip with --no-verify)"
 if command -v shellcheck >/dev/null 2>&1; then
   make --no-print-directory lint
 else
-  # Don't block contributors without ShellCheck (e.g. Windows); CI still lints.
-  echo "pre-commit: shellcheck not installed; skipping lint (CI will run it)" >&2
+  # Don't block contributors without ShellCheck (e.g. Windows), but be clear
+  # that nothing else will lint this commit.
+  echo "pre-commit: shellcheck not installed; skipping lint (nothing else lints it - install ShellCheck)" >&2
 fi
 
 make --no-print-directory test
