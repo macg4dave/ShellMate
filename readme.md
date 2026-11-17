@@ -1,13 +1,12 @@
 <p align="center">
   <!-- When the final ShellMate wordmark is committed, it can replace this mascot header. -->
-  <img src="docs/mascot/ruby.png" alt="Ruby, the ShellMate mascot" width="170">
+  <img src="docs/images/mascot/logo_hero.png" alt="Ruby, the ShellMate mascot">
 </p>
 
 <h1 align="center">ShellMate</h1>
 
 <p align="center">
   <strong>It's your shell, mate.</strong><br>
-  Handy Bash tools, a friendlier terminal, and the same setup across macOS, Linux and Windows Subsystem for Linux.
 </p>
 
 <p align="center">
@@ -29,45 +28,24 @@
 
 **ShellMate makes Bash more useful without trying to replace Bash.** It adds small, memorable commands for checking your system, understanding your network, extracting archives, downloading files and keeping your environment tidy.
 
-It's for the person who just wants `extract photo.zip` to work **and** the person who wants stable, scriptable `key=value` output on a headless server.
-
-- **Practical from day one.** No framework to learn, no account to create.
-- **One familiar setup.** Take your Bash profile between a Mac, Linux workstation, server and WSL.
-- **Respectful of your shell.** Lightweight modular helpers; no daemon, telemetry or background updater.
-- **Optional extras stay optional.** Missing tools degrade gracefully where possible. Package installation is offered, not silently forced.
-- **Built to be recoverable.** Backups, installer dry-run, module switches and a safe mode.
-
 ## Install in one command
 
-On **macOS or Linux**, open a terminal and run:
+Just open a terminal and run:
 
 ```bash
 curl -fsSL https://github.com/macg4dave/ShellMate/releases/latest/download/shellmate-install.sh | bash
 ```
 
-That's the published release installer, not an arbitrary checkout of the main branch. It downloads the release archive, checks its SHA-256 checksum when a checksum utility is available, and runs ShellMate's normal installer.
-
-**What changes?** ShellMate is copied to `~/.my-mac-bash-profile`, your `~/.bash_profile` is linked to it, and anything it replaces is backed up by default. On Linux, it also adds a guarded snippet to `~/.bashrc` so non-login terminal windows load it. It offers missing recommended tools and asks before installing system packages.
-
-Open a new Bash terminal, or run:
-
-```bash
-source ~/.bash_profile
-sysinfo
-```
-
-**Want to inspect it before running it?** This works too:
+**Want to clone it?** This works too:
 
 ```bash
 git clone https://github.com/macg4dave/ShellMate.git
 cd ShellMate
-bash scripts/install.sh --repo "$(pwd)" --dry-run  # preview changes
 bash scripts/install.sh --repo "$(pwd)"            # install
 ```
 
-You can also download a release ZIP/tarball from [Releases](https://github.com/macg4dave/ShellMate/releases) and run the bundled `scripts/install.sh`. See `bash scripts/install.sh --help` for all options.
+ZIP/tarball are available in [Releases](https://github.com/macg4dave/ShellMate/releases)
 
-> **Already use your own Bash profile?** The installer asks before replacing it and keeps a timestamped backup. Use `--bootstrap none` if you don't want to be offered extra packages; use `--yes` to skip replacement confirmations (it does *not* auto-install system packages).
 
 ### A note for Mac users
 
@@ -80,7 +58,7 @@ sysinfo
 
 ### A note for Windows users
 
-Run ShellMate **inside your WSL Linux distribution**, not in PowerShell or Command Prompt. Open Ubuntu, Debian or another Bash-based WSL distro and use the same installation instructions as Linux. Windows Terminal is a great place to run it.
+Run ShellMate **inside your WSL Linux distribution**, not in PowerShell, Bash in the Windows Terminal is a great place to run it.
 
 ## Meet your new toolbox
 
@@ -88,53 +66,36 @@ No complicated subcommands to memorise. These are the helpers you'll actually re
 
 | Command | What it does | Example |
 | --- | --- | --- |
-| `sysinfo` | CPU, RAM, disk, uptime, load and network totals in one readable view | `sysinfo --box` |
-| `netinfo` | Local hostname, interface, gateway, IP, VPN and optional public-IP details | `netinfo --box` |
+| `sysinfo` | CPU, RAM, disk, uptime, load and network totals in one readable view | `sysinfo` |
+| `netinfo` | Local hostname, interface, gateway, IP, VPN and optional public-IP details | `netinfo ` |
 | `extract` | Unpack ZIP, TAR, 7z, RAR and other supported archives using installed tools | `extract downloads.zip` |
-| `pathinfo` | See every PATH entry and find missing or duplicate directories | `pathinfo --duplicates` |
-| `flushdns` | Clear the DNS cache with OS-aware, best-effort handling | `flushdns --dry-run` |
+| `flushdns` | Clear the DNS cache with OS-aware, best-effort handling | `flushdns` |
 | `jd` | Download a file using wget with resume-friendly behaviour | `jd https://example.org/file.iso` |
 | `jdir` | Fetch a directory recursively with wget | `jdir https://example.org/files/` |
 | `motd` | View, customise or turn off your terminal welcome | `motd --edit` |
 
-Run `<command> --help` for options. Archive support depends on which extractors are installed; `jd` and `jdir` need `wget`.
+### For Mac power users
 
-**Three quick examples:**
+Two extra helpers are available on macOS:
 
-```bash
-sysinfo --table             # a different layout for your system snapshot
-netinfo --kv                # predictable key=value lines for scripts
-extract backup.tar.gz       # unpack without remembering tar flags
-```
-
-Some handy switches:
-
-```bash
-sysinfo --box               # bordered dashboard (also --table or --stacked)
-sysinfo --plain             # no terminal colour codes
-netinfo --stacked           # narrow-terminal-friendly layout
-extract --list archive.zip  # inspect an archive before unpacking it
-flushdns --status           # see what DNS cache service can be detected
-motd --off                  # stop showing the startup message
-```
+- `cdf` — switch to the folder shown in the frontmost Finder window.
+- `gosu` — launch a red coloured Terminal `sudo -s'.
 
 ## See it in action
 
-These are **actual ShellMate terminal screenshots** from the project, not interface mock-ups. Click any image to view it at full size.
-
 <p align="center">
-  <a href="docs/screenshots/mac_motd.png"><img src="docs/screenshots/mac_motd.png" alt="ShellMate's welcome message and command list in macOS Terminal" width="820"></a>
+  <a href="docs/images/screenshots/mac_coffee.png"><img src="docs/images/screenshots/mac_coffee.png" alt="ShellMate's welcome message and command list in macOS Terminal" width="820"></a>
   <br><sub>macOS · Bash welcome and built-in commands</sub>
 </p>
 
 <table>
   <tr>
     <td align="center" width="50%">
-      <a href="docs/screenshots/gnome_term.png"><img src="docs/screenshots/gnome_term.png" alt="ShellMate sysinfo running in GNOME Terminal on Linux"></a>
+      <a href="docs/images/screenshots/gnome_term.png"><img src="docs/images/screenshots/gnome_term.png" alt="ShellMate sysinfo running in GNOME Terminal on Linux"></a>
       <br><sub>Linux · GNOME Terminal · system information</sub>
     </td>
     <td align="center" width="50%">
-      <a href="docs/screenshots/windows_wsl.png"><img src="docs/screenshots/windows_wsl.png" alt="ShellMate running in Bash on Windows Subsystem for Linux"></a>
+      <a href="docs/images/screenshots/windows_wsl.png"><img src="docs/images/screenshots/windows_wsl.png" alt="ShellMate running in Bash on Windows Subsystem for Linux"></a>
       <br><sub>Windows · WSL · Bash inside Windows Terminal</sub>
     </td>
   </tr>
@@ -144,8 +105,6 @@ These are **actual ShellMate terminal screenshots** from the project, not interf
      and link it here after the image has been committed. -->
 
 ## Where it works
-
-ShellMate targets **Bash 3.2+**, using portable shell code and OS-specific checks. There is a difference between a platform having a test target and being individually certified on every release:
 
 | Environment | Coverage | Notes |
 | --- | --- | --- |
@@ -166,7 +125,7 @@ See the [compatibility contract](docs/v2.0/compatibility_contract.md) for the pr
 
 Files on Windows drives such as `/mnt/c` sometimes appear executable to Linux, making a normal coloured `ls` list look as if *everything* is a program. ShellMate detects those WSL mounts and makes regular files readable and directories easy to spot, without changing Linux-drive listings.
 
-Prefer blue directories instead of the default bright yellow?
+Prefer blue directories instead of the default yellow?
 
 ```bash
 export BASH_PROFILE_WSL_DIR_COLOR="01;34"
@@ -185,32 +144,11 @@ motd --off        # disable it
 motd --on         # enable it again
 ```
 
-Your custom message is plain text at `~/.config/my-mac-bash-profile/motd`. It is displayed as text, **not executed as shell code**.
+Your custom message is plain text at `~/.config/my-mac-bash-profile/motd`.
 
 ## Sensible defaults, room to tinker
 
-ShellMate uses small Bash modules in `profile.d/` rather than a large plugin framework. Features are loaded when Bash starts; the expensive work happens when you actually run a helper. It avoids network calls or package installation merely from sourcing your profile.
-
-### Use only the bits you want
-
-Try a fresh login Bash with a feature disabled:
-
-```bash
-BASH_PROFILE_MODULES_DISABLE="netinfo" bash -l
-```
-
-Or load just a few modules:
-
-```bash
-BASH_PROFILE_MODULES_ENABLE="sysinfo extract" bash -l
-```
-
-These variables must be set **before** ShellMate loads; place persistent choices in your shell's early startup configuration. You can also keep per-machine aliases and overrides in:
-
-- `profile.d/local.sh` (ignored by Git)
-- `~/.config/my-mac-bash-profile/local.sh`
-
-Local overrides are loaded last. For more, read [configuration and modules](docs/v2.0/config_and_modules.md).
+ShellMate uses small Bash modules in `profile.d/` rather than a large plugin framework.
 
 ### Script-friendly output
 
@@ -225,13 +163,6 @@ printf 'Local IP: %s\n' "$local_ip"
 ```
 
 The field names and ordering are documented in the [helper contract](docs/v2.0/helper_contract.md).
-
-### For Mac power users
-
-Two extra helpers are available on macOS:
-
-- `cdf` — switch to the folder shown in the frontmost Finder window.
-- `gosu` — launch a Terminal tab running `sudo -s` (depends on AppleScript/Terminal settings).
 
 ## Updates, backups and removal
 
